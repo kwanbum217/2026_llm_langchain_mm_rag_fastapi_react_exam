@@ -16,7 +16,7 @@ if sys.platform == 'win32':
     sys.stderr = io.TextIOWrapper(sys.stderr.detach(), encoding='utf-8')
 
 load_dotenv()
-client = OpenAI(api_key=os.getenv("OPEN_API_KEY"))
+client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
 model = os.getenv("OPEN_AI_MODEL")
 
 # 모든 실험에서 동일한 user 메시지를 씁니다

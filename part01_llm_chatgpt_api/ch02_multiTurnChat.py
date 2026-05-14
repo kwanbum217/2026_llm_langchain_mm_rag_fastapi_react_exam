@@ -79,4 +79,4 @@ for i, msg in enumerate(history):
 print()
 print("💡 3턴이 지나자 히스토리가 7개 메시지(system + 3×user/assistant)로 늘었습니다.")
 print("   대화가 길어질수록 토큰이 늘어납니다.")
-print("   → Part 02에서 LangChain이 이걸 자동 관리합니다.")  
+print("   → Part 02에서 LangChain이 이걸 자동 관리합니다.") 

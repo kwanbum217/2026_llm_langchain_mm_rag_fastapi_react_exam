@@ -11,12 +11,12 @@ from openai import OpenAI
 load_dotenv()
 
 # api key 읽기
-api_key = os.getenv("OPEN_API_KEY")
+api_key = os.getenv("OPENAI_API_KEY")
 model = os.getenv("OPEN_AI_MODEL")
 
 if not api_key:
   raise ValueError(
-    "OPEN_API_KEY가 환경변수가 없습니다."
+    "OPENAI_API_KEY가 환경변수가 없습니다."
   )
 
 #  OPENAI 클라이언트 객체 생성
