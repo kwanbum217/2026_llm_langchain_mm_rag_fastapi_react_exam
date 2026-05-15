@@ -209,6 +209,24 @@ result = json_parser.parse(llm_markdown_response)
   ```
 - **의의**: raw 데이터 입력부터 최종 구조화된 결과 출력까지 코드 한 줄(`invoke`)로 실행 가능한 선언적 아키텍처 완성
 
+### Skill 17: 대화 이력 관리 (InMemoryChatMessageHistory)
+- **파일**: `part02_langchain/ch03_real_memory_chatbot.py`
+- **핵심 클래스**: `InMemoryChatMessageHistory`
+- **기능**:
+  - LLM과의 대화 이력(`HumanMessage`, `AIMessage`)을 RAM(메모리)에 저장
+  - 대화가 반복될 때마다 이전 메시지들을 포함하여 LLM에 전달함으로써 '맥락(Context)'을 유지
+- **메시지 구성 패턴**:
+  - `[SystemMessage]` (역할) + `[이전 대화 이력]` + `[현재 질문]`
+
+### Skill 18: 메모리 통합 챗봇 설계 (Stateful Chatbot)
+- **파일**: `part02_langchain/ch03_real_memory_chatbot.py`
+- **핵심**: 객체 지향 프로그래밍(OOP)을 통해 메모리와 분석 로직을 캡슐화
+- **구조**:
+  - `__init__`: `InMemoryChatMessageHistory` 초기화 및 프레임 캐시 설정
+  - `analyze_frame`: 프레임 분석 결과를 이력에 추가하고 JSON으로 파이썬 객체화
+  - `ask`: 운영자의 후속 질문 처리 (이전 분석 결과 기반 답변 생성)
+- **효과**: "3번 프레임 왜 위험이야?"와 같이 생략된 지칭어(대명사)가 포함된 질문에도 정확히 답변 가능
+
 - **CCTV 탐지 데이터 구조 (OpenCV 출력 기준)**:
 ```python
 {
@@ -226,16 +244,17 @@ result = json_parser.parse(llm_markdown_response)
 
 ## 알려진 이슈
 
-| 이슈 | 설명 |
-|------|------|
 | **환경변수 키 통일** | 모든 파일에서 `OPENAI_API_KEY`를 사용하도록 통일됨 |
+| **윈도우 터미널 인코딩** | 윈도우 기본 터미널(CP949)에서 이모지 출력 시 `UnicodeEncodeError` 발생 |
+| **이모지 제거 정책** | 인코딩 오류 방지를 위해 모든 코드 내 이모지를 제거하고 텍스트로 대체함 |
 
 ---
 
 ## 코드 스타일 컨벤션
 - 모든 주석·출력·**문서(Artifact)** 및 **AI 답변**은 **한국어**로 작성
 - 파일명: `ch{번호}_{영문설명}.py` 형식
-- 이모지 사용 금지
+- **이모지 사용 절대 금지**: 터미널 출력 오류(`UnicodeEncodeError`) 방지 및 프로젝트 통일성 확보
 - 교육적 설명 주석을 상세히 포함
 - `temperature = 0.0` (JSON 분석) / `0.3` (일반 분석)
 - **프롬프트 내 지시**: 모델에게 항상 "한국어로 답변할 것"을 명시적으로 지시
+- **실행 환경**: 반드시 가상환경(`venv`)의 파이썬을 사용 (`& [경로]/venv/Scripts/python.exe [파일]`)
