@@ -8,7 +8,7 @@
 | **핵심 아키텍처** | OpenCV 1차 필터링 → 이상 프레임만 LLM 전달 → 위험도 분석 |
 | **Python** | 3.14 (venv 가상환경) |
 | **LLM 모델** | GPT-4o-mini |
-| **주요 패키지** | openai 2.36.0, python-dotenv 1.2.2, langchain 1.3.0, langchain-openai 1.2.1, langchain-community 0.4.1 |
+| **주요 패키지** | openai 2.36.0, python-dotenv 1.2.2, langchain 1.3.0, langchain-openai 1.2.1, langchain-community 0.4.1, chromadb, numpy |
 
 ---
 
@@ -239,6 +239,142 @@ result = json_parser.parse(llm_markdown_response)
     ]
 }
 ```
+
+---
+
+## Part 02 — LangChain (심화)
+
+### Skill 19: 메모리 비교 실험 (기억 없는 LLM vs. 기억 있는 LLM)
+- **파일**: `part02_langchain/ch03_memoryCompare.py`
+- **목적**: 메모리 필요성을 체감하기 위한 시뮬레이션
+- **케이스 A — 기억 없는 LLM**:
+  - 매번 독립적인 단일 메시지만 전달
+  - 후속 질문("왜 위험으로 분류했어?")에 맥락 없이 답변 불가
+- **케이스 B — 기억 있는 LLM**:
+  - `chat_history` 리스트에 이전 대화를 직접 누적
+  - 전체 이력을 매번 LLM에 전달하여 맥락 유지 성공
+- **핵심 교훈**: LangChain Memory는 이 이력 누적 과정을 자동화해 줌
+
+### Skill 20: SimpleBufferMemory - 버퍼 메모리 구현 원리
+- **파일**: `part02_langchain/ch03_simple_buffer_memory.py`
+- **목적**: `ConversationBufferMemory`의 내부 동작을 이해하기 위한 교육용 클래스
+- **핵심 메서드**:
+  - `add_user_message(text)` / `add_ai_message(text)` — 역할별 메시지 추가
+  - `get_all_messages()` — 전체 이력 반환 (LLM 호출 시 사용)
+  - `format_as_text()` — 프롬프트 삽입용 텍스트 변환 (`Human: ... / AI: ...`)
+  - `clear()` — 새 세션 시작 시 이력 초기화
+- **한계**: 대화가 길어질수록 토큰이 계속 증가 → SummaryMemory로 해결
+
+### Skill 21: SimpleSummaryMemory - 요약 메모리 구현 원리
+- **파일**: `part02_langchain/ch03_simple_summary_memory.py`
+- **목적**: `ConversationSummaryMemory`의 압축 원리를 이해하기 위한 교육용 클래스
+- **동작 방식**:
+  1. 최근 `max_recent`개까지는 원문 유지
+  2. 초과 시 가장 오래된 대화를 한 줄 요약으로 압축
+  3. LLM에는 `[이전 대화 요약] + [최근 대화 원문]`을 함께 전달
+- **실제 LangChain**: 요약 압축도 LLM이 자동으로 수행
+- **코드 패턴**:
+```python
+mem = SimpleSummaryMemory(max_recent=2)
+mem.add_exchange(user_msg, ai_msg)
+context = mem.get_context()  # [요약] + [최근 원문] 합쳐서 반환
+```
+
+---
+
+## Part 02 — LangChain (Agent & Tools)
+
+### Skill 22: LCEL 배치 파이프라인 - 다수 프레임 일괄 분석
+- **파일**: `part02_langchain/ch04_langChain_pipeline.py`
+- **목적**: CH02 LCEL 파이프라인을 복습하고 10개 프레임을 루프로 일괄 처리
+- **Mock LLM 패턴**:
+  - 실제 `ChatOpenAI` 대신 `mock_llm_fn` 함수를 `RunnableLambda`로 감싸서 사용
+  - 실제 교체 시 `| RunnableLambda(mock_llm_fn)` 자리에 `| llm` 만 넣으면 됨
+- **파이프라인 구조**:
+```python
+analysis_chain = (
+    prompt
+    | RunnableLambda(mock_llm_fn)         # Mock LLM (실제: ChatOpenAI)
+    | RunnableLambda(lambda r: r.content) # .content 문자열 추출
+    | json_parser                         # JSON 문자열 -> dict
+)
+```
+- **배치 루프**: `for frame in frame_results: analysis_chain.invoke({...})`
+
+### Skill 23: @tool 데코레이터 - LangChain Tool 등록
+- **파일**: `part02_langchain/ch04_tool_decorator.py`
+- **핵심**: `@tool` 데코레이터로 일반 파이썬 함수를 LLM이 호출 가능한 Tool로 등록
+- **중요 규칙**: Tool 함수의 docstring이 LLM이 도구를 선택하는 기준이 됨 → 상세하게 작성
+- **등록된 Tool 3종**:
+
+| Tool 이름 | 기능 | 입력 |
+|-----------|------|------|
+| `filter_danger_frames` | 위험 프레임만 필터링 | `frames_json: str` |
+| `count_objects_in_zone` | 특정 구역 탐지 수 카운트 | `frames_json: str`, `zone: str` |
+| `get_risk_summary` | 전체 위험도 요약 통계 | `results_json: str` |
+
+- **Tool 직접 호출**: `tool_func.invoke({"arg": value})` 로 LLM 없이 테스트 가능
+- **Tool 메타데이터 확인**: `tool.name`, `tool.description`, `tool.args`
+- **모든 Tool 입출력은 JSON 문자열**: `json.loads()` / `json.dumps()` 활용
+
+### Skill 24: ReAct 패턴 - Thought → Action → Observation 루프
+- **파일**: `part02_langchain/ch04_react_simulate.py`
+- **ReAct란**: LLM이 질문을 분석하고 Tool을 스스로 선택·호출·결과 확인 후 최종 답변을 생성하는 추론 패턴
+- **5단계 흐름**:
+  1. **Thought** — 어떤 Tool이 필요한지 LLM이 추론
+  2. **Action** — Tool 이름과 인자 결정
+  3. **Observation** — Tool 실행 결과 확인
+  4. **반복** — 결과가 충분하지 않으면 1번으로 돌아감
+  5. **Final Answer** — 모든 정보를 모아 최종 답변 생성
+- **`TOOL_REGISTRY` 패턴**: Tool 이름(str) → Tool 객체 매핑 딕셔너리
+```python
+TOOL_REGISTRY = {
+    "filter_danger_frames":  filter_danger_frames,
+    "count_objects_in_zone": count_objects_in_zone,
+    "get_risk_summary":      get_risk_summary,
+}
+observation = TOOL_REGISTRY[action_name].invoke(action_input)
+```
+- **교육 목적**: 실제 Agent에서는 LLM이 Thought/Action을 자동 생성하지만, 수동 시뮬레이션으로 흐름을 시각적으로 이해
+
+---
+
+## Part 03 — RAG & VectorDB
+
+### Skill 25: OpenAI Embedding + 코사인 유사도 직접 구현
+- **파일**: `part03_rag_vectordb/ch02_01_cosine_similarity.py`
+- **목적**: RAG의 핵심 원리인 "의미 기반 유사도 검색"을 직접 구현하여 이해
+- **임베딩 모델**: `text-embedding-3-small` (1536차원, 빠르고 저렴)
+- **코사인 유사도 공식**:
+  - `cos(θ) = (A · B) / (|A| × |B|)`, 결과: -1.0 ~ 1.0 (1에 가까울수록 유사)
+- **핵심 함수**:
+```python
+def get_embedding(text: str) -> np.array:
+    response = client.embeddings.create(
+        model="text-embedding-3-small",
+        input=text.strip()
+    )
+    return np.array(response.data[0].embedding)
+
+def cosine_similarity(a: np.ndarray, b: np.ndarray) -> float:
+    dot  = np.dot(a, b)
+    norm = np.linalg.norm(a) * np.linalg.norm(b)
+    return dot / norm if norm != 0 else 0.0
+```
+- **활용**: 과거 탐지 로그 텍스트들을 벡터화 → 현재 상황 쿼리와 유사도 계산 → 유사 사례 순위 반환
+- **한계**: 매번 임베딩 API 호출 필요, 대용량 처리 불가 → ChromaDB로 해결 (Skill 26)
+
+### Skill 26: ChromaDB - 벡터 데이터베이스 구축 (예정)
+- **파일**: `part03_rag_vectordb/ch02_02_chromadb_search.py` (작성 중)
+- **ChromaDB 역할**: 임베딩 벡터를 디스크에 저장하고 빠른 유사도 검색 지원
+- **Skill 25와의 차이**:
+
+| 항목 | Skill 25 (직접 구현) | Skill 26 (ChromaDB) |
+|------|---------------------|---------------------|
+| 저장 방식 | 메모리(RAM) | 디스크 영구 저장 |
+| 검색 속도 | O(n) 순차 | 인덱스 기반 고속 |
+| 확장성 | 수십 건 | 수백만 건 |
+| API 호출 | 매번 임베딩 호출 | 최초 1회 후 재사용 |
 
 ---
 

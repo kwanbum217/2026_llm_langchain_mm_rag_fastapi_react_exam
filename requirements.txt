@@ -1,6 +1,18 @@
+# ── Part 01: LLM 기초 & ChatGPT API ──────────────────────────
 openai==2.36.0
 python-dotenv==1.2.2
+
+# ── Part 02: LangChain ────────────────────────────────────────
 langchain==1.3.0
+langchain-core==1.4.0
 langchain-openai==1.2.1
 langchain-community==0.4.1
-langchain-core==1.4.0
+langchain-text-splitters==1.1.2
+
+# ── Part 02: Agent & Tools ───────────────────────────────────
+langgraph==1.2.0
+langgraph-prebuilt==1.1.0
+
+# ── Part 03: RAG & VectorDB ──────────────────────────────────
+chromadb==1.5.9
+numpy==2.4.6
