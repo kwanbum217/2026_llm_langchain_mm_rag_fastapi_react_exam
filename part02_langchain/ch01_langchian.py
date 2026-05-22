@@ -1,4 +1,7 @@
 #OPEN AI 채팅 모델을 LanChain 방식으로 사용할 수 있도록 하는 클래스
+from dotenv import load_dotenv
+load_dotenv()
+
 from langchain_openai import ChatOpenAI
 #프롬프트를 템플릿으로 관리할 수 있도록 하는 클래스
 from langchain_core.prompts import ChatPromptTemplate
