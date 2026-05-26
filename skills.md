@@ -365,3 +365,43 @@
 - **이모지 사용 절대 엄금**: 텍스트 가독성은 일반 대괄호 기호(`[TIP]`, `[WARNING]`, `[OK]`, `[ERROR]`) 등을 활용합니다.
 - 교육적 설명 주석 및 자료형 어노테이션(`Type Hinting`)의 적극적 작성을 장려합니다.
 - 결정적 구조 파싱이 필요한 JSON 파이프라인의 `temperature` 값은 `0.0`으로 고정하며, 그 외 시나리오도 `0.3` 미만으로 제어합니다.
+
+---
+
+## Part 04 - 멀티모달 (Multimodal)
+
+### Skill 32: 순수 Python 기반 WAV 오디오 합성 및 16-bit PCM 바이너리 패킹
+- **파일**: `part04_multimodal/ch03_01_whisper.py`
+- **핵심**: 별도의 외부 오디오 라이브러리 없이 파이썬 내장 `wave`와 `struct` 모듈을 조합하여, Whisper API 권장 규격(16000Hz 주파수, 1채널 모노, 16-bit PCM 포맷)에 부합하는 물리적 가상 WAV 파일을 수학적 합성 기술로 제작합니다.
+- **핵심 구현 코드 (스페이스 2칸 컨벤션 준수)**:
+  ```python
+  import wave
+  import struct
+  import math
+
+  with wave.open(path, "w") as wf:
+    wf.setnchannels(1)          # 모노 채널 (Whisper 권장)
+    wf.setsampwidth(2)          # 16-bit PCM (2바이트 폭)
+    wf.setframerate(sample_rate) # 샘플레이트 지정 (Whisper 권장 16000Hz)
+    for i in range(n_samples):
+      t = i / sample_rate
+      val = 0.4 * math.sin(2 * math.pi * 200 * t)  # 오디오 파형 합성
+      sample = int(val * 32767 * 0.8)
+      wf.writeframes(struct.pack("<h", sample))    # 리틀엔디안 16비트 정수 패킹
+  ```
+- **자료형 및 파라미터 (Data Types & Params)**:
+  - 입력: `path: str` (저장할 파일의 절대/상대 경로), `duration_sec: float` (음향 파일 재생 시간), `sample_rate: int` (주파수 헤르츠 수치)
+  - 출력: 물리 디스크 상에 즉시 생성되는 바이너리 `.wav` 파일
+  - 핵심 기법: `struct.pack("<h", sample)` (부동소수점 오디오 신호 값을 바이너리 16비트 signed short 형식으로 전환)
+- **실무 주의사항 및 팁 (Warnings & Tips)**:
+  - Whisper API를 활용해 음성 인식을 진행할 때 오디오 용량을 낭비하지 않도록 불필요한 스테레오 다중 채널을 지양하고 **1채널 모노 및 16000Hz 규격**으로 고정 가공해야 오버헤드를 막을 수 있습니다.
+
+### Skill 33: winget 무인(Silent) 패키지 설치를 통한 멀티미디어 분석 인프라 구축
+- **핵심**: 윈도우 패키지 관리자(`winget`)를 터미널 상에서 원격 제어하여 오디오 분석 및 파형 가공을 지원하는 Audacity 편집기를 확인 메시지(대화 상자) 대기 현상 없이 완벽 무인으로 초고속 자동 설치합니다.
+- **핵심 구현 코드**:
+  ```powershell
+  winget install Audacity.Audacity --silent --accept-source-agreements --accept-package-agreements
+  ```
+- **실무 주의사항 및 팁 (Warnings & Tips)**:
+  - 백그라운드 자동화 배치 스크립트나 CI/CD 파이프라인 상에서 사용자와의 시각적 대화 창이 생성되어 실행이 멈추는 행(Hang) 결함을 예방하기 위해, `--silent` 플래그 및 소스/패키지 라이선스 강제 서명 플래그를 필수로 함께 전달해야 합니다.
+
