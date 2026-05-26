@@ -7,6 +7,7 @@
 | **프로젝트명** | AI CCTV 보안 분석 플랫폼 |
 | **핵심 아키텍처** | OpenCV 1차 필터링 → 이상 프레임만 LLM 전달 → 위험도 분석 |
 | **Python** | 3.14 (venv 가상환경) |
+| **가상환경 활성화** | PowerShell: `.\venv\Scripts\Activate.ps1` <br> CMD: `.\venv\Scripts\activate.bat` |
 | **LLM 모델** | GPT-4o-mini |
 | **주요 패키지** | openai 2.36.0, python-dotenv 1.2.2, langchain 1.3.0, langchain-openai 1.2.1, langchain-community 0.4.1, chromadb, numpy |
 
@@ -124,18 +125,7 @@ total_cost  = input_cost + output_cost
   1. 매번 프롬프트를 직접 조립 → 코드 중복
   2. 매번 API를 직접 호출 → 반복 코드
   3. 매번 응답을 수동 파싱 → 반복 코드
-- **`format_detections()` 유틸리티 함수**: 탐지 결과를 텍스트로 변환
-```python
-def format_detections(frame_data):
-    lines = [f"[{frame_data['timestamp']}] 프레임 #{frame_data['frame_id']}"]
-    for d in frame_data['detections']:
-        lines.append(
-            f"- {d['class']} 탐지 (신뢰도 {d['confidence']:.0%}), "
-            f"위치: 좌상단({d['bbox'][0]},{d['bbox'][1]}) "
-            f"우하단({d['bbox'][2]},{d['bbox'][3]})"
-        )
-    return "\n".join(lines)
-```
+- **프레임 데이터 텍스트 변환 유틸리티 함수**: 탐지 결과를 텍스트로 변환하는 기초적인 형태
 
 ### Skill 11: LangChain LCEL 기본 체인 구성
 - **파일**: `part02_langchain/ch01_langchian.py`
@@ -154,13 +144,30 @@ def format_detections(frame_data):
 - **기능**:
   - 일반 파이썬 함수를 LangChain 체인에서 사용할 수 있는 객체로 변환
   - 딕셔너리 형태의 복합 입력 처리 가능
-  - 파이프 연산자(|)를 이용해 여러 함수를 순차적으로 연결 (함수형 프로그래밍 스타일)
+  - 파이프 연산자(|)를 이용해 여러 함수를 순차적으로 연결
 - **코드 패턴**:
 ```python
 chain = RunnableLambda(func1) | RunnableLambda(func2)
 result = chain.invoke(input_data)
 ```
-### Skill 13: ChatPromptTemplate - System/Human 메시지 분리
+
+### Skill 13: ChatPromptTemplate 입력 최적화를 위한 데이터 변환
+- **파일**: `part02_langchain/ch02_format_detection.py`
+- **기능 및 구조**:
+  - OpenCV 탐지 결과(dict)를 ChatPromptTemplate의 개별 입력 변수인 `frame_id`, `timestamp`, `location`, `detections_text`에 정확히 맞춘 구조화된 딕셔너리로 전처리합니다.
+  - bbox의 가상 좌표를 가로/세로 크기로 계산(`width = x2 - x1`, `height = y2 - y1`)하여 실시간 픽셀 면적 크기(`크기: WxHpx`)를 출력하는 정교함을 갖추었습니다.
+  - 전처리 완료된 헬퍼 함수를 `RunnableLambda`로 감싸 파이프라인의 입구 부품(`formatter`)으로 쉽게 패키징합니다.
+- **코드 패턴**:
+```python
+def format_detections(frame_data: dict) -> dict:
+    # 탐지 정보를 파싱하여 가로x세로 크기 및 좌표를 문자열화하고 변수 딕셔너리 반환
+    ...
+    return {"frame_id": ..., "timestamp": ..., "location": ..., "detections_text": ...}
+
+formatter = RunnableLambda(format_detections)
+```
+
+### Skill 14: ChatPromptTemplate - System/Human 메시지 분리
 - **파일**: `part02_langchain/ch02_prompt_template.py`
 - **핵심 메서드**: `ChatPromptTemplate.from_messages()`
 - **기능**:
@@ -175,58 +182,48 @@ prompt = ChatPromptTemplate.from_messages([
 ])
 ```
 
-### Skill 14: JsonOutputParser - 유연한 JSON 파싱 (Robustness)
+### Skill 15: JsonOutputParser - 유연한 JSON 파싱 (Robustness)
 - **파일**: `part02_langchain/ch02_output_parser.py`
 - **핵심 클래스**: `JsonOutputParser`
 - **기능**:
   - LLM이 반환한 텍스트에서 JSON 부분만 추출하여 파이썬 딕셔너리로 변환
   - **강점**: LLM이 JSON을 마크다운 코드 블록(```json ... ```)으로 감싸서 응답해도 에러 없이 자동으로 파싱함
-  - 파이썬 내장 `json.loads()`는 마크다운 형식이 포함되면 파싱 에러가 발생하므로, 랭체인의 파서를 쓰는 것이 훨씬 안정적임
 - **코드 패턴**:
 ```python
 json_parser = JsonOutputParser()
 result = json_parser.parse(llm_markdown_response)
 ```
 
-### Skill 15: 탐지 신뢰도(Confidence)의 비판적 해석 유도
+### Skill 16: 탐지 신뢰도(Confidence)의 비판적 해석 유도
 - **파일**: `part02_langchain/ch02_lcel_pipeline.py`
 - **프롬프트 기법**:
-  - LLM에게 "YOLO의 신뢰도는 클래스 확률일 뿐, 객체의 실제 존재 여부에 대한 절대적 신뢰를 의미하지 않는다"는 점을 명시적으로 교육
+  - LLM에게 "YOLO의 신뢰도는 클래스 확률일 뿐, 객체의 실제 존재 여부에 대한 절대적 신뢰를 의미하지 않는다"는 점을 명시적으로 주입
   - 이를 통해 LLM이 신뢰도가 낮은 객체에 대해 "불확실성"을 인지하고 보수적인(신중한) 분석 결과를 내놓도록 유도
-- **효과**: 신뢰도가 낮은 탐지 건에 대해 무조건적인 위험 판정 대신 "불확실함에 따른 추가 모니터링 필요"와 같은 합리적인 조치 사항을 제안하게 됨
 
-### Skill 16: 최종 랭체인 파이프라인 통합 (End-to-End Pipeline)
+### Skill 17: 최종 랭체인 파이프라인 통합 (End-to-End Pipeline)
 - **파일**: `part02_langchain/ch02_lcel_pipeline.py`
-- **핵심**: 지금까지 만든 모든 컴포넌트를 하나로 연결하여 완성된 AI 보안 분석 엔진 구축
+- **핵심**: 데이터 전처리부터 모델 호출, 파싱까지 선언적 구조로 연결
 - **파이프라인 구조**:
-  ```python
-  analysis_chain = (
-      formatter      # 1. OpenCV 데이터를 프롬프트용 딕셔너리로 전처리 (RunnableLambda)
-      | cctv_prompt  # 2. 전처리된 데이터를 시스템/휴먼 메시지 템플릿에 주입
-      | llm          # 3. GPT-4o-mini 모델 호출 (temperature=0.0)
-      | json_parser  # 4. LLM의 텍스트 응답을 JSON(dict)으로 파싱
-  )
-  ```
-- **의의**: raw 데이터 입력부터 최종 구조화된 결과 출력까지 코드 한 줄(`invoke`)로 실행 가능한 선언적 아키텍처 완성
+```python
+analysis_chain = (
+    formatter      # 1. OpenCV 데이터를 프롬프트용 딕셔너리로 전처리 (RunnableLambda)
+    | cctv_prompt  # 2. 전처리된 데이터를 시스템/휴먼 메시지 템플릿에 주입
+    | llm          # 3. GPT-4o-mini 모델 호출 (temperature=0.0)
+    | json_parser  # 4. LLM의 텍스트 응답을 JSON(dict)으로 파싱
+)
+```
 
-### Skill 17: 대화 이력 관리 (InMemoryChatMessageHistory)
+### Skill 18: 대화 이력 관리 (InMemoryChatMessageHistory)
 - **파일**: `part02_langchain/ch03_real_memory_chatbot.py`
 - **핵심 클래스**: `InMemoryChatMessageHistory`
 - **기능**:
   - LLM과의 대화 이력(`HumanMessage`, `AIMessage`)을 RAM(메모리)에 저장
   - 대화가 반복될 때마다 이전 메시지들을 포함하여 LLM에 전달함으로써 '맥락(Context)'을 유지
-- **메시지 구성 패턴**:
-  - `[SystemMessage]` (역할) + `[이전 대화 이력]` + `[현재 질문]`
 
-### Skill 18: 메모리 통합 챗봇 설계 (Stateful Chatbot)
+### Skill 19: 메모리 통합 챗봇 설계 (Stateful Chatbot)
 - **파일**: `part02_langchain/ch03_real_memory_chatbot.py`
 - **핵심**: 객체 지향 프로그래밍(OOP)을 통해 메모리와 분석 로직을 캡슐화
-- **구조**:
-  - `__init__`: `InMemoryChatMessageHistory` 초기화 및 프레임 캐시 설정
-  - `analyze_frame`: 프레임 분석 결과를 이력에 추가하고 JSON으로 파이썬 객체화
-  - `ask`: 운영자의 후속 질문 처리 (이전 분석 결과 기반 답변 생성)
 - **효과**: "3번 프레임 왜 위험이야?"와 같이 생략된 지칭어(대명사)가 포함된 질문에도 정확히 답변 가능
-
 - **CCTV 탐지 데이터 구조 (OpenCV 출력 기준)**:
 ```python
 {
@@ -244,89 +241,52 @@ result = json_parser.parse(llm_markdown_response)
 
 ## Part 02 — LangChain (심화)
 
-### Skill 19: 메모리 비교 실험 (기억 없는 LLM vs. 기억 있는 LLM)
+### Skill 20: 메모리 비교 실험 (기억 없는 LLM vs. 기억 있는 LLM)
 - **파일**: `part02_langchain/ch03_memoryCompare.py`
 - **목적**: 메모리 필요성을 체감하기 위한 시뮬레이션
-- **케이스 A — 기억 없는 LLM**:
-  - 매번 독립적인 단일 메시지만 전달
-  - 후속 질문("왜 위험으로 분류했어?")에 맥락 없이 답변 불가
-- **케이스 B — 기억 있는 LLM**:
-  - `chat_history` 리스트에 이전 대화를 직접 누적
-  - 전체 이력을 매번 LLM에 전달하여 맥락 유지 성공
-- **핵심 교훈**: LangChain Memory는 이 이력 누적 과정을 자동화해 줌
+- **케이스 A — 기억 없는 LLM**: 매번 독립적인 단일 메시지만 전달하여 후속 질문에 맥락 없이 답변 불가
+- **케이스 B — 기억 있는 LLM**: `chat_history` 리스트에 이전 대화를 직접 누적 전달하여 맥락 유지
 
-### Skill 20: SimpleBufferMemory - 버퍼 메모리 구현 원리
+### Skill 21: SimpleBufferMemory - 버퍼 메모리 구현 원리
 - **파일**: `part02_langchain/ch03_simple_buffer_memory.py`
 - **목적**: `ConversationBufferMemory`의 내부 동작을 이해하기 위한 교육용 클래스
 - **핵심 메서드**:
   - `add_user_message(text)` / `add_ai_message(text)` — 역할별 메시지 추가
-  - `get_all_messages()` — 전체 이력 반환 (LLM 호출 시 사용)
+  - `get_all_messages()` — 전체 이력 반환
   - `format_as_text()` — 프롬프트 삽입용 텍스트 변환 (`Human: ... / AI: ...`)
-  - `clear()` — 새 세션 시작 시 이력 초기화
-- **한계**: 대화가 길어질수록 토큰이 계속 증가 → SummaryMemory로 해결
+- **한계**: 대화가 길어질수록 토큰이 계속 증가
 
-### Skill 21: SimpleSummaryMemory - 요약 메모리 구현 원리
+### Skill 22: SimpleSummaryMemory - 요약 메모리 구현 원리
 - **파일**: `part02_langchain/ch03_simple_summary_memory.py`
 - **목적**: `ConversationSummaryMemory`의 압축 원리를 이해하기 위한 교육용 클래스
 - **동작 방식**:
   1. 최근 `max_recent`개까지는 원문 유지
   2. 초과 시 가장 오래된 대화를 한 줄 요약으로 압축
   3. LLM에는 `[이전 대화 요약] + [최근 대화 원문]`을 함께 전달
-- **실제 LangChain**: 요약 압축도 LLM이 자동으로 수행
-- **코드 패턴**:
-```python
-mem = SimpleSummaryMemory(max_recent=2)
-mem.add_exchange(user_msg, ai_msg)
-context = mem.get_context()  # [요약] + [최근 원문] 합쳐서 반환
-```
 
 ---
 
 ## Part 02 — LangChain (Agent & Tools)
 
-### Skill 22: LCEL 배치 파이프라인 - 다수 프레임 일괄 분석
+### Skill 23: LCEL 배치 파이프라인 - 다수 프레임 일괄 분석
 - **파일**: `part02_langchain/ch04_langChain_pipeline.py`
-- **목적**: CH02 LCEL 파이프라인을 복습하고 10개 프레임을 루프로 일괄 처리
-- **Mock LLM 패턴**:
-  - 실제 `ChatOpenAI` 대신 `mock_llm_fn` 함수를 `RunnableLambda`로 감싸서 사용
-  - 실제 교체 시 `| RunnableLambda(mock_llm_fn)` 자리에 `| llm` 만 넣으면 됨
-- **파이프라인 구조**:
-```python
-analysis_chain = (
-    prompt
-    | RunnableLambda(mock_llm_fn)         # Mock LLM (실제: ChatOpenAI)
-    | RunnableLambda(lambda r: r.content) # .content 문자열 추출
-    | json_parser                         # JSON 문자열 -> dict
-)
-```
-- **배치 루프**: `for frame in frame_results: analysis_chain.invoke({...})`
+- **목적**: CH02 LCEL 파이프라인을 복습하고 다수 프레임을 루프로 일괄 처리
+- **Mock LLM 패턴**: 실제 `ChatOpenAI` 대신 `mock_llm_fn` 함수를 `RunnableLambda`로 감싸서 오프라인 상태에서도 효율적으로 체인을 시뮬레이션하는 기법
 
-### Skill 23: @tool 데코레이터 - LangChain Tool 등록
+### Skill 24: @tool 데코레이터 - LangChain Tool 등록
 - **파일**: `part02_langchain/ch04_tool_decorator.py`
 - **핵심**: `@tool` 데코레이터로 일반 파이썬 함수를 LLM이 호출 가능한 Tool로 등록
-- **중요 규칙**: Tool 함수의 docstring이 LLM이 도구를 선택하는 기준이 됨 → 상세하게 작성
+- **중요 규칙**: Tool 함수의 docstring이 LLM이 도구를 선택하는 기준이 되므로 상세히 기술
 - **등록된 Tool 3종**:
-
-| Tool 이름 | 기능 | 입력 |
-|-----------|------|------|
-| `filter_danger_frames` | 위험 프레임만 필터링 | `frames_json: str` |
-| `count_objects_in_zone` | 특정 구역 탐지 수 카운트 | `frames_json: str`, `zone: str` |
-| `get_risk_summary` | 전체 위험도 요약 통계 | `results_json: str` |
-
-- **Tool 직접 호출**: `tool_func.invoke({"arg": value})` 로 LLM 없이 테스트 가능
+  - `filter_danger_frames`: 위험 프레임만 필터링
+  - `count_objects_in_zone`: 특정 구역 탐지 수 카운트
+  - `get_risk_summary`: 전체 위험도 요약 통계
 - **Tool 메타데이터 확인**: `tool.name`, `tool.description`, `tool.args`
-- **모든 Tool 입출력은 JSON 문자열**: `json.loads()` / `json.dumps()` 활용
 
-### Skill 24: ReAct 패턴 - Thought → Action → Observation 루프
+### Skill 25: ReAct 패턴 - Thought → Action → Observation 루프
 - **파일**: `part02_langchain/ch04_react_simulate.py`
-- **ReAct란**: LLM이 질문을 분석하고 Tool을 스스로 선택·호출·결과 확인 후 최종 답변을 생성하는 추론 패턴
-- **5단계 흐름**:
-  1. **Thought** — 어떤 Tool이 필요한지 LLM이 추론
-  2. **Action** — Tool 이름과 인자 결정
-  3. **Observation** — Tool 실행 결과 확인
-  4. **반복** — 결과가 충분하지 않으면 1번으로 돌아감
-  5. **Final Answer** — 모든 정보를 모아 최종 답변 생성
-- **`TOOL_REGISTRY` 패턴**: Tool 이름(str) → Tool 객체 매핑 딕셔너리
+- **개념**: LLM이 질문을 분석하고 Tool을 스스로 선택·호출·결과 확인 후 최종 답변을 생성하는 추론 패턴
+- **`TOOL_REGISTRY` 패턴**: Tool 이름(str) → Tool 객체 매핑 딕셔너리를 직접 정의하여 호출
 ```python
 TOOL_REGISTRY = {
     "filter_danger_frames":  filter_danger_frames,
@@ -335,21 +295,19 @@ TOOL_REGISTRY = {
 }
 observation = TOOL_REGISTRY[action_name].invoke(action_input)
 ```
-- **교육 목적**: 실제 Agent에서는 LLM이 Thought/Action을 자동 생성하지만, 수동 시뮬레이션으로 흐름을 시각적으로 이해
 
 ---
 
 ## Part 03 — RAG & VectorDB
 
-### Skill 25: OpenAI Embedding + 코사인 유사도 직접 구현
+### Skill 26: OpenAI Embedding + 코사인 유사도 직접 구현
 - **파일**: `part03_rag_vectordb/ch02_01_cosine_similarity.py`
 - **목적**: RAG의 핵심 원리인 "의미 기반 유사도 검색"을 직접 구현하여 이해
-- **임베딩 모델**: `text-embedding-3-small` (1536차원, 빠르고 저렴)
-- **코사인 유사도 공식**:
-  - `cos(θ) = (A · B) / (|A| × |B|)`, 결과: -1.0 ~ 1.0 (1에 가까울수록 유사)
+- **임베딩 모델**: `text-embedding-3-small` (1536차원)
+- **코사인 유사도 공식**: `cos(θ) = (A · B) / (|A| × |B|)`
 - **핵심 함수**:
 ```python
-def get_embedding(text: str) -> np.array:
+def get_embedding(text: str) -> np.ndarray:
     response = client.embeddings.create(
         model="text-embedding-3-small",
         input=text.strip()
@@ -361,28 +319,53 @@ def cosine_similarity(a: np.ndarray, b: np.ndarray) -> float:
     norm = np.linalg.norm(a) * np.linalg.norm(b)
     return dot / norm if norm != 0 else 0.0
 ```
-- **활용**: 과거 탐지 로그 텍스트들을 벡터화 → 현재 상황 쿼리와 유사도 계산 → 유사 사례 순위 반환
-- **한계**: 매번 임베딩 API 호출 필요, 대용량 처리 불가 → ChromaDB로 해결 (Skill 26)
 
-### Skill 26: ChromaDB - 벡터 데이터베이스 구축 (예정)
-- **파일**: `part03_rag_vectordb/ch02_02_chromadb_search.py` (작성 중)
-- **ChromaDB 역할**: 임베딩 벡터를 디스크에 저장하고 빠른 유사도 검색 지원
-- **Skill 25와의 차이**:
+### Skill 27: ChromaDB - 벡터 데이터베이스 구축
+- **파일**: `part03_rag_vectordb/ch02_02_chromadb_search.py`
+- **핵심**:
+  - `collection.add(...)`를 통한 탐지 로그 데이터(ID, 문서 텍스트, 메타데이터) 등록
+  - `collection.query(...)`를 사용해 현재 상황 쿼리와 유사도 거리가 가장 가까운 상위 N개 로그 추출
+  - Windows 콘솔 인코딩(`cp949`) 호환을 위해 출력 이모지 제거 및 텍스트 기호 적용
 
-| 항목 | Skill 25 (직접 구현) | Skill 26 (ChromaDB) |
-|------|---------------------|---------------------|
-| 저장 방식 | 메모리(RAM) | 디스크 영구 저장 |
-| 검색 속도 | O(n) 순차 | 인덱스 기반 고속 |
-| 확장성 | 수십 건 | 수백만 건 |
-| API 호출 | 매번 임베딩 호출 | 최초 1회 후 재사용 |
+### Skill 28: ChromaDB 영속성 관리 및 CRUD 운용법
+- **파일**: `part03_rag_vectordb/ch02_03_chromadb_crud.py`
+- **핵심 운용 기법**:
+  - **영속적 클라이언트 구축**: `chromadb.PersistentClient(path="./chroma_db")`를 사용해 메모리가 아닌 디스크에 벡터 데이터를 영구 저장합니다.
+  - **유사도 공간 설정**: `get_or_create_collection(name, metadata={"hnsw:space": "cosine"})`을 통해 임베딩 크기보다 방향을 중시하는 코사인 유사도 연산으로 거리 검색 방식을 고정합니다.
+  - **문서 수정 시 필수 주의사항**: 
+    > [!IMPORTANT]
+    > `collection.update()`를 통해 문서 내용(`documents`)을 변경하는 경우, 반드시 새로운 텍스트의 벡터(`embeddings`)도 함께 생성해 전달해야 합니다. 그렇지 않으면 데이터베이스 내부 인덱스에 구 버전 텍스트의 벡터가 남아 있어, 갱신된 텍스트 내용으로 검색이 되지 않는 치명적인 인덱스 불일치가 발생합니다.
+  - **정밀 삭제 제어**:
+    - `collection.delete(ids=[...])` (ID 지정 개별 삭제)
+    - `collection.delete(where={"resolved": True})` (단일 조건 필터링 삭제)
+    - `collection.delete(where={"$and": [{"risk_level": "위험"}, {"location": "공장"}]})` (복합 조건 논리 삭제)
+  - **컬렉션 초기화**: 데이터만 지우고 컬렉션 설정을 살리는 방식(`delete(ids=all_ids)`)과 클라이언트 수준에서 완전히 파괴 후 재생성하는 방식(`delete_collection`)의 구분 적용.
+
+### Skill 29: LangChain LCEL RAG 파이프라인 구축 및 Retriever 구성
+- **파일**: `part03_rag_vectordb/ch03_01_rag_pipeline.py`
+- **구축 절차 및 구성 요소**:
+  - **CSVLoader 연동**: `CSVLoader(file_path, encoding="utf-8", source_column="timestamp")`를 통해 구조화된 로우 데이터를 개별 `Document` 객체로 자동 파싱합니다.
+  - **CharacterTextSplitter 분할**: 장문의 텍스트 및 보안 매뉴얼을 처리하기 위해 청크 크기(`chunk_size=500`), 오버랩(`chunk_overlap=50`), 줄바꿈 구분자(`separator="\n"`)를 적용하여 텍스트 분할 파이프라인을 구축합니다.
+  - **Chroma 자동 인덱싱**: `OpenAIEmbeddings(model="text-embedding-3-small")`와 `Chroma.from_documents()`를 연동하여 청크 텍스트 벡터화 및 ChromaDB 적재 작업을 한 줄의 코드로 통합 처리합니다.
+  - **Retriever 변환**: 적재된 데이터스토어를 `vectorstore.as_retriever(search_kwargs={"k": 3})`를 호출하여 의미 유사도가 가장 높은 상위 3개의 맥락 문서를 실시간 질의할 수 있는 정보 검색 모듈로 가공합니다.
+
+### Skill 30: RAG 파이프라인과 MCP(Model Context Protocol) 접목 아키텍처
+- **개념**: LangChain RAG 파이프라인의 데이터 수집(Input) 및 최종 결과 조치(Output/Action) 단계를 외부 도구들과 유기적으로 연결합니다.
+- **접목 포인트**:
+  1. **입력단 (Data Ingestion)**: Notion MCP, Slack MCP 등을 사용하여 실시간 원시 데이터를 가져와 Document로 변환합니다.
+  2. **출력단 (Action Execution)**: 최종 분석 리포트가 생성되면, Notion MCP를 통해 페이지에 문서를 자동 기록하거나, 위험 판정 시 Slack MCP를 통해 경보 메시지를 즉시 발송하는 조치를 취합니다.
+- **의의**: LLM이 데이터를 조회하는 통로이자, 분석 결과에 따라 비즈니스 도구들을 직접 실행하게 만드는 자동화된 '손발' 역할을 수행합니다.
 
 ---
 
 ## 알려진 이슈
 
-| **환경변수 키 통일** | 모든 파일에서 `OPENAI_API_KEY`를 사용하도록 통일됨 |
+| 항목 | 원인 및 해결방안 |
+|------|-----------------|
+| **환경변수 키 통일** | 모든 파일에서 `OPENAI_API_KEY`를 사용하도록 완전히 통일됨 |
 | **윈도우 터미널 인코딩** | 윈도우 기본 터미널(CP949)에서 이모지 출력 시 `UnicodeEncodeError` 발생 |
-| **이모지 제거 정책** | 인코딩 오류 방지를 위해 모든 코드 내 이모지를 제거하고 텍스트로 대체함 |
+| **이모지 제거 정책** | 인코딩 오류 예방을 위해 모든 코드 및 출력 메시지에서 이모지를 제거하고 텍스트 기호로 대체함 |
+| **파일 스트림 인코딩** | 윈도우 환경에서 파일 입출력 시 인코딩 오류가 발생하지 않도록 `open(..., encoding="utf-8")`을 명시해야 함 |
 
 ---
 
@@ -393,4 +376,8 @@ def cosine_similarity(a: np.ndarray, b: np.ndarray) -> float:
 - 교육적 설명 주석을 상세히 포함
 - `temperature = 0.0` (JSON 분석) / `0.3` (일반 분석)
 - **프롬프트 내 지시**: 모델에게 항상 "한국어로 답변할 것"을 명시적으로 지시
-- **실행 환경**: 반드시 가상환경(`venv`)의 파이썬을 사용 (`& [경로]/venv/Scripts/python.exe [파일]`)
+- **실행 환경**: 반드시 가상환경(`venv`)을 활성화하거나 가상환경 내 파이썬 인터프리터 경로를 사용하여 실행합니다.
+  - 활성화 방법:
+    - PowerShell: `.\venv\Scripts\Activate.ps1`
+    - CMD: `.\venv\Scripts\activate.bat`
+  - 직접 실행: `& [경로]/venv/Scripts/python.exe [파일]` (PowerShell)

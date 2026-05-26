@@ -133,4 +133,7 @@ temp/
 *.tmp
 
 # ChromaDB
-part03_rag_vectordb/chroma_db
+chroma_db/
+part03_rag_vectordb/chroma_db/
+.chroma_db/*
+chroma_db/

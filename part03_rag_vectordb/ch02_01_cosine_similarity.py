@@ -50,30 +50,31 @@ log_texts = [
 ]
 
 # ─── 현재 상황 쿼리 ──────────────────────────────────────────
-query = "새벽 창고 침입 의심. person:2 탐지."
+if __name__ == "__main__":
+    query = "새벽 창고 침입 의심. person:2 탐지."
 
-print(f"🔍 현재 상황: {query}\n")
-print("📡 OpenAI Embedding API 호출 중...")
+    print(f"[검색 상황] 현재 상황: {query}\n")
+    print("[API] OpenAI Embedding API 호출 중...")
 
-# 쿼리와 모든 로그를 벡터로 변환
-query_vec = get_embedding(query)
-log_vecs = [get_embedding(log) for log in log_texts]
+    # 쿼리와 모든 로그를 벡터로 변환
+    query_vec = get_embedding(query)
+    log_vecs = [get_embedding(log) for log in log_texts]
 
-# 유사도 계산 및 정렬
-results = []
-for log, log_vecs in zip(log_texts, log_vecs) :
-  similarity = cosine_similarity(query_vec, log_vecs)
-  results.append((similarity, log))
+    # 유사도 계산 및 정렬
+    results = []
+    for log, log_vecs in zip(log_texts, log_vecs) :
+      similarity = cosine_similarity(query_vec, log_vecs)
+      results.append((similarity, log))
 
-# 유사도를 기준으로 내림차순 정렬
-results.sort(key= lambda x :x[0], reverse=True)
+    # 유사도를 기준으로 내림차순 정렬
+    results.sort(key= lambda x :x[0], reverse=True)
 
-print("\n📋 유사도 검색 결과 (높은 순):")
-for i, (sim, log) in enumerate(results, 1):
-    bar = "█" * int(sim * 20)   # 유사도를 막대 그래프로 시각화
-    print(f"  {i}위 (유사도: {sim:.3f}) {bar}")
-    print(f"     → {log}")
-    print()
+    print("\n[결과] 유사도 검색 결과 (높은 순):")
+    for i, (sim, log) in enumerate(results, 1):
+        bar = "o" * int(sim * 20)   # 유사도를 막대 그래프로 시각화 (이모지 및 특수문자 깨짐 방지)
+        print(f"  {i}위 (유사도: {sim:.3f}) {bar}")
+        print(f"     → {log}")
+        print()
   
 
   
