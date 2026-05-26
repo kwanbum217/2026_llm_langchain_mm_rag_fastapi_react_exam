@@ -356,6 +356,27 @@ def cosine_similarity(a: np.ndarray, b: np.ndarray) -> float:
   2. **출력단 (Action Execution)**: 최종 분석 리포트가 생성되면, Notion MCP를 통해 페이지에 문서를 자동 기록하거나, 위험 판정 시 Slack MCP를 통해 경보 메시지를 즉시 발송하는 조치를 취합니다.
 - **의의**: LLM이 데이터를 조회하는 통로이자, 분석 결과에 따라 비즈니스 도구들을 직접 실행하게 만드는 자동화된 '손발' 역할을 수행합니다.
 
+### Skill 31: MultiQueryRetriever - 다중 질의를 통한 검색 재현율(Recall) 극대화
+- **파일**: `part03_rag_vectordb/ch03_02_multi_query_retriever.py`
+- **핵심**: 사용자의 모호한 자연어 질문에 대해 LLM이 의미상 동일한 다각도의 대체 질문들을 생성하고, 각 질문으로 검색을 병렬 수행한 뒤 그 결과 문서들의 고유한 합집합을 추출합니다.
+- **주요 기법**:
+  1. **임포트 경로 주의**: 최신 랭체인 아키텍처에 맞추어 `langchain_classic.retrievers.multi_query.MultiQueryRetriever` 경로에서 임포트합니다.
+  2. **동적 대체 질문 확인 (로깅)**: 아래 설정을 통해 LLM이 생성한 대체 질문들을 콘솔 터미널에 실시간으로 출력합니다.
+     ```python
+     import logging
+     logging.basicConfig()
+     logging.getLogger("langchain.retrievers.multi_query").setLevel(logging.INFO)
+     ```
+  3. **검색기 구성**:
+     ```python
+     multi_query_retriever = MultiQueryRetriever.from_llm(
+         retriever=base_retriever,
+         llm=llm
+     )
+     ```
+  4. **강건한 파일 경로 관리**: 실행 디렉토리에 영향받지 않고 일관되게 동작하도록 `os.path.abspath(__file__)` 기준의 절대 경로 탐색 기법을 적용합니다.
+- **의의**: 단어가 정확히 일치하지 않아도 의미적으로 연관된 과거 사례들을 풍부하게 수집하여 RAG의 한계인 검색 누락(False Negative)을 방지합니다.
+
 ---
 
 ## 알려진 이슈
