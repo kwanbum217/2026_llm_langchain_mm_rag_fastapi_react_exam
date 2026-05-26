@@ -2,11 +2,18 @@
 # LangChain MultiQueryRetriever 실습 코드
 # 모호한 자연어 질문 -> LLM 다중 질문 생성 -> 벡터 검색 병렬 처리 -> RAG 분석 대응 방안 생성
 
-import sys
 import os
+import sys
 import logging
 from dotenv import load_dotenv
 from typing import List
+
+# Windows 터미널 한글 깨짐 방지 및 UTF-8 출력 강제 설정
+# Pylance 등 IDE 정적 분석기의 타입 경고 밑줄 방지를 위해 type: ignore 주석을 추가합니다.
+if hasattr(sys.stdout, "reconfigure"):
+    sys.stdout.reconfigure(encoding="utf-8")  # type: ignore
+if hasattr(sys.stderr, "reconfigure"):
+    sys.stderr.reconfigure(encoding="utf-8")  # type: ignore
 
 from langchain_openai import OpenAIEmbeddings, ChatOpenAI
 from langchain_community.document_loaders import CSVLoader
@@ -16,79 +23,129 @@ from langchain_core.documents import Document
 from langchain_core.prompts import PromptTemplate
 from langchain_core.runnables import RunnablePassthrough
 from langchain_core.output_parsers import StrOutputParser
-from langchain_classic.retrievers.multi_query import MultiQueryRetriever
+# 특수 래퍼 패키지 경로에 대한 IDE의 미확인 참조(Import Resolution) 밑줄 경고를 예방하기 위해 type: ignore를 선언합니다.
+from langchain_classic.retrievers.multi_query import MultiQueryRetriever  # type: ignore
 
-load_dotenv()
+# -------------------------------------------------------------
+# STEP 1: MultiQueryRetriever의 대체 질문 생성을 관찰하기 위한 로깅 설정
+# -------------------------------------------------------------
+logging.basicConfig()
+logger = logging.getLogger("langchain_classic.retrievers.multi_query")
+logger.setLevel(logging.INFO)
 
-# ─── 문서 준비 ────────────────────────────────────────────────
-docs = [
-    Document(page_content="새벽 2시 31분 창고 출입구 침입. person:2 car:1 탐지. 위험. 경보 후 도주."),
-    Document(page_content="새벽 3시 15분 공장 외곽 침입 시도. person:3 car:2 탐지. 위험. 경찰 출동."),
-    Document(page_content="오후 2시 주차장 A. person:1 탐지. 정상 이용객."),
-    Document(page_content="심야 창고 주변 배회. person:1 반복 배회 감지. 주의. 경비 순찰."),
-    Document(page_content="새벽 1시 주차장 B 침입 시도. person:2 탐지. 차량 접근 반복. 위험."),
-    Document(page_content="새벽 창고 출입구 야간 무단 접근. 차량 1대 정차 후 2인 하차. 경비 즉시 출동."),
-]
+# [중요 오류 수정]: 부모(루트) 로거로의 전파를 명시적으로 차단(propagate = False)합니다.
+# 이를 차단하지 않으면 우리가 추가한 sys.stdout 핸들러의 출력([LOGGER])과
+# 루트 로거의 기본 sys.stderr 출력이 이중으로 터미널 콘솔에 찍히는 중복 출력 및 오버헤드 결함이 유발됩니다.
+logger.propagate = False
 
+# 명시적으로 StreamHandler를 달아서 터미널 출력을 보장합니다.
+if not logger.handlers:
+    handler = logging.StreamHandler(sys.stdout)
+    formatter = logging.Formatter("[LOGGER] %(message)s")
+    handler.setFormatter(formatter)
+    logger.addHandler(handler)
+
+# 환경 변수 로드
+current_dir = os.path.dirname(os.path.abspath(__file__))
+project_root = os.path.dirname(current_dir)
+env_path = os.path.join(project_root, ".env")
+load_dotenv(dotenv_path=env_path)
+
+CSV_PATH = os.path.join(current_dir, "detection_logs.csv")
+
+print("[STEP 2] DocumentLoader - CSV 파일 로드 및 Document 객체 생성")
+loader = CSVLoader(
+    file_path=CSV_PATH,
+    encoding="utf-8",
+    source_column="timestamp",
+)
+raw_docs = loader.load()
+print(f"로드된 전체 문서 개수: {len(raw_docs)}개")
+
+print("\n[STEP 3] TextSplitter - 문서를 청크로 분할")
+splitter = CharacterTextSplitter(
+    chunk_size=500,
+    chunk_overlap=50,
+    separator="\n"
+)
+docs = splitter.split_documents(raw_docs)
+print(f"분할 후 청크 개수: {len(docs)}개")
+
+print("\n[STEP 4] OpenAI Embedding 및 ChromaDB 저장")
 embeddings = OpenAIEmbeddings(model="text-embedding-3-small")
 vectorstore = Chroma.from_documents(documents=docs, embedding=embeddings)
 base_retriever = vectorstore.as_retriever(search_kwargs={"k": 2})
+print("ChromaDB에 데이터 적재 완료 및 기본 검색기 구성")
 
-# ─────────────────────────────────────────────────────────────
-# MultiQueryRetriever 구성
-#
-# [작동 원리]
-# 1. 원래 질문 → GPT-4o가 3가지 다른 표현으로 재작성
-#    예) "새벽 창고 침입 의심"
-#     → "야간 창고 출입구 무단 접근 사례"
-#     → "심야 시간대 창고 주변 복수 인원 탐지"
-#     → "새벽 차량 동반 침입 패턴"
-# 2. 원래 + 재작성 3개 = 총 4가지 쿼리로 각각 검색
-# 3. 중복 제거 후 더 다양한 관련 문서 반환
-#
-# temperature=0.3: 약간의 창의성으로 다양한 표현 생성
-# ───────────────────────────────────────────────────────────
+# -------------------------------------------------------------
+# STEP 5: MultiQueryRetriever 구성
+# -------------------------------------------------------------
+print("\n[STEP 5] MultiQueryRetriever 구성")
+llm = ChatOpenAI(model="gpt-4o-mini", temperature=0)
 
-llm = ChatOpenAI(model="gpt-4o-mini", temperature=0.3)
-
-# 기본 설정으로 로그를 남길 수 있는 로거객체를 가져와 langchain_classic.retriever.multi_query의 
-# 이름으로 하고, 기본 로그레벨을  logging.INFO 레벨로 지정
-logging.basicConfig(
-    level=logging.INFO,
-    format="%(asctime)s [%(levelname)s] %(message)s",
-    stream=sys.stdout,
-    force=True,    # ← 기존 핸들러 강제 초기화 후 재설정
-)
-logging.getLogger("langchain_classic.retriever.multi_query").setLevel(logging.INFO)
-
-multi_retriever = MultiQueryRetriever.from_llm(
+# 기본 검색기와 LLM을 전달하여 다중 질의 검색기(MultiQueryRetriever) 생성
+multi_query_retriever = MultiQueryRetriever.from_llm(
     retriever=base_retriever,
     llm=llm
 )
+print("다중 질의 검색기(MultiQueryRetriever) 생성 성공")
 
-query = "새벽 창고 출입구 침입 의심. person:2 / car:1 탐지."
+# -------------------------------------------------------------
+# STEP 6: LCEL RAG 체인 구성
+# -------------------------------------------------------------
+prompt = PromptTemplate.from_template(
+    """당신은 CCTV 보안 분석 전문가입니다.
+아래 과거 탐지 로그를 참고하여 현재 상황에 대한 대응 방안을 제시하세요.
+부정적 지시사항: 주어지지 않은 정보에 대한 상상이나 추론은 엄격히 금지합니다. 오직 참고용 사실에만 기반하여 답변하세요.
 
+[참고 과거 사례]
+{context}
+
+[현재 탐지 상황]
+{question}
+
+위험도(정상/주의/위험) 판단과 즉각적인 조치사항을 구체적으로 한국어로만 답변하세요."""
+)
+
+def format_docs(docs: List[Document]) -> str:
+    """
+    검색된 고유 문서들을 포맷팅하여 컨텍스트 문자열로 합칩니다.
+    """
+    return "\n----\n".join(doc.page_content for doc in docs)
+
+rag_chain = (
+    {
+        "context": multi_query_retriever | format_docs,
+        "question": RunnablePassthrough()
+    }
+    | prompt
+    | llm
+    | StrOutputParser()
+)
+print("LCEL Multi-Query RAG 체인 구성 완료")
+
+# -------------------------------------------------------------
+# STEP 7: 실제 모호한 자연어 쿼리 실행
+# -------------------------------------------------------------
+query = "늦은 밤 시간대에 누군가가 들어오려 하거나 순찰을 돌았던 긴급 대응 내역이 있나요?"
+
+print("\n" + "=" * 60)
+print(f"검색할 자연어 질의: {query}")
 print("=" * 60)
-print("📌 기본 Retriever vs MultiQueryRetriever 비교")
+
+# MultiQueryRetriever 내부 로깅을 통해 자동 생성된 질문들이 터미널에 출력됩니다.
+print("\n--- [로깅 출력 시작: 대체 질문 생성 및 병렬 검색 진행] ---")
+retrieved_docs = multi_query_retriever.invoke(query)
+print("--- [로깅 출력 종료] ---\n")
+
+print(f"조회된 고유 문서 수: {len(retrieved_docs)}개")
+for i, doc in enumerate(retrieved_docs, 1):
+    print(f"\n[유사 사례 문서 {i}]")
+    print(doc.page_content)
+
+# 최종 체인 실행
+print("\n" + "=" * 60)
+print("GPT-4o-mini 기반 최종 위험도 및 대응 분석 리포트")
 print("=" * 60)
-
-# 기본 Retriever 결과
-basic_docs = base_retriever.invoke(query)
-print(f"\n[기본 Retriever] → {len(basic_docs)}개:")
-for i, d in enumerate(basic_docs, 1):
-    print(f"  [{i}] {d.page_content[:65]}")
-
-multi_docs = multi_retriever.invoke(query)
-print(f"→ {len(multi_docs)}개 (중복 제거 후):")
-for i, d in enumerate(multi_docs, 1):
-    print(f"  [{i}] {d.page_content[:65]}")
-
-print(f"\n✅ 기본: {len(basic_docs)}개 → MultiQuery: {len(multi_docs)}개")
-
-
-# multi_retriever 로 검색된 다양한 응답의 내용을 랭체인을 이용하여 llm에게 주고, 종합적인 응답을 받도록 한다.
-
-
-    
-
-
+answer = rag_chain.invoke(query)
+print(answer)
