@@ -50,7 +50,7 @@ def make_test_wav(
       wf.writeframes(struct.pack("<h", sample))
 
   size_bytes = os.path.getsize(path)
-  print(f"✅ 파일 생성 완료: {path}")
+  print(f"[OK] 파일 생성 완료: {path}")
   print(f"   샘플레이트: {sample_rate}Hz")
   print(f"   길이: {duration_sec}초")
   print(f"   크기: {size_bytes:,} bytes ({size_bytes/1024:.1f} KB)")

@@ -16,3 +16,6 @@ langgraph-prebuilt==1.1.0
 # ── Part 03: RAG & VectorDB ──────────────────────────────────
 chromadb==1.5.9
 numpy==2.4.6
+
+# ── Part 04: 멀티모달 (Multimodal) ──────────────────────────
+openai-whisper==20250625

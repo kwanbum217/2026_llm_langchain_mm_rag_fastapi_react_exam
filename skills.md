@@ -356,6 +356,7 @@
 | **윈도우 터미널 인코딩** | Windows 기본 인코딩(CP949) 터미널 출력 환경에서 이모지 포함 문구 실행 시 `UnicodeEncodeError` 유발 현상이 발생합니다. |
 | **이모지 전면 제거 정책** | 시스템 인코딩 충돌을 예방하고 프로젝트 스타일의 엄격한 가독성 확보를 위해, **모든 소스 코드 및 출력용 텍스트, 문서 마크다운에서 이모지를 전면 차단하고 대괄호 기호로 통일**합니다. |
 | **파일 스트림 UTF-8 명시** | Windows 로컬 환경에서 텍스트 입출력 시 시스템 인코딩 오류가 발생하지 않도록 `open(..., encoding="utf-8")`을 코드 작성 시 필수로 선언합니다. |
+| **유니코드 Smart Quote 경고** | 파일명에 포함된 유니코드 특수 따옴표(`"`, U+201C)를 문자열에 직접 기술하면 VS Code 등 에디터가 문법 기호 혼동 경고(빨간 밑줄)를 표시합니다. 해결책은 해당 문자를 `\u201c` 이스케이프 시퀀스로 치환하여 런타임에 동적 해독되도록 처리하는 것입니다. |
 
 ---
 
@@ -371,7 +372,7 @@
 ## Part 04 - 멀티모달 (Multimodal)
 
 ### Skill 32: 순수 Python 기반 WAV 오디오 합성 및 16-bit PCM 바이너리 패킹
-- **파일**: `part04_multimodal/ch03_01_whisper.py`
+- **파일**: `part04_multimodal/ch03_01_make_wav.py`
 - **핵심**: 별도의 외부 오디오 라이브러리 없이 파이썬 내장 `wave`와 `struct` 모듈을 조합하여, Whisper API 권장 규격(16000Hz 주파수, 1채널 모노, 16-bit PCM 포맷)에 부합하는 물리적 가상 WAV 파일을 수학적 합성 기술로 제작합니다.
 - **핵심 구현 코드 (스페이스 2칸 컨벤션 준수)**:
   ```python
@@ -404,4 +405,86 @@
   ```
 - **실무 주의사항 및 팁 (Warnings & Tips)**:
   - 백그라운드 자동화 배치 스크립트나 CI/CD 파이프라인 상에서 사용자와의 시각적 대화 창이 생성되어 실행이 멈추는 행(Hang) 결함을 예방하기 위해, `--silent` 플래그 및 소스/패키지 라이선스 강제 서명 플래그를 필수로 함께 전달해야 합니다.
+
+### Skill 34: FFmpeg 인프라 구축 및 윈도우 세션 지연 극복을 위한 PATH 동적 갱신(Hot-loading)
+- **파일**: `part04_multimodal/ch03_02_whisper_local.py`
+- **핵심**: 로컬 Whisper STT 작동 시 필수적인 오디오 디코더 `ffmpeg` 설치 결함(`FileNotFoundError: [WinError 2]`)을 `winget`으로 자동 해결하고, 윈도우 OS의 고유 한계인 부모 프로세스 세션 재시작 대기 오버헤드를 극복하기 위해 가상 환경 내에서 실시간 설치 경로를 스캔해 `PATH`를 동적 갱신하는 튜닝 기술을 다룹니다.
+- **핵심 구현 코드 (스페이스 2칸 컨벤션 준수)**:
+  ```python
+  import os
+  import shutil
+
+  if not shutil.which("ffmpeg"):
+    winget_path = r"C:\Users\lucian\AppData\Local\Microsoft\WinGet\Packages\BtbN.FFmpeg.GPL.Shared_Microsoft.Winget.Source_8wekyb3d8bbwe"
+    if os.path.exists(winget_path):
+      for sub in os.listdir(winget_path):
+        sub_path = os.path.join(winget_path, sub)
+        if os.path.isdir(sub_path) and sub.startswith("ffmpeg-"):
+          bin_path = os.path.join(sub_path, "bin")
+          if os.path.exists(bin_path):
+            # [핵심] 현재 돌아가는 파이썬 세션의 PATH에 즉시 강제 주입
+            os.environ["PATH"] = bin_path + os.pathsep + os.environ["PATH"]
+            break
+  ```
+- **자료형 및 매개변수 (Data Types & Params)**:
+  - 핵심 API: `whisper.load_model("tiny", device="cpu")` (NVIDIA 940MX의 2GB VRAM 제약을 고려해 OOM을 원천 차단하고 연산 효율을 보장하기 위해 가벼운 tiny 모델을 CPU 모드로 고정 로드)
+  - 변환 매개변수: `fp16=False` (CPU 연산이므로 float16 가속을 해제하여 부동소수점 오동작 방지)
+- **실무 주의사항 및 팁 (Warnings & Tips)**:
+  - 윈도우에서 `winget`으로 `ffmpeg`를 새로 설치해도, 이미 켜져 있는 터미널 세션은 윈도우 세션 재시작 전까지 이를 인식하지 못해 계속 에러가 발생합니다. 코드 내에 동적 스캔 및 선제 `PATH` 주입 로직을 장착하면 이러한 세션 리셋 번거로움을 완전히 혁신할 수 있습니다.
+
+### Skill 35: 유니코드 특수문자 이스케이프 처리 및 모듈 연결성 8단계 검증 방법론
+- **파일**: `part04_multimodal/ch03_02_whisper_local.py`
+- **핵심**: 파일명 내 유니코드 특수 따옴표(`"`, U+201C)가 포함된 경로 문자열을 에디터 경고(빨간 밑줄) 없이 안전하게 처리하는 이스케이프 기법과, 스크립트 실행 전 모든 의존 요소가 올바르게 연결되어 있는지 검증하는 8단계 체크포인트 방법론을 다룹니다.
+- **유니코드 이스케이프 기법**:
+  - 문제: 파일명 `20260526_"All_units (1).wav`에서 `"` 문자(U+201C)를 문자열에 직접 기술하면 VS Code 등 에디터가 문법 기호 혼동 경고(빨간 밑줄)를 부여합니다.
+  - 해결: 직접 노출된 특수문자를 `\u201c` 유니코드 이스케이프 시퀀스로 치환합니다. 파이썬 런타임이 실행 시 이를 원래 문자로 자동 해독하므로 동작 호환성은 100% 유지됩니다.
+  ```python
+  # [수정 전] 에디터 빨간 밑줄 발생
+  AUDIO_PATH = os.path.join(current_dir, "20260526_\"All_units (1).wav")
+
+  # [수정 후] 이스케이프 처리로 경고 제거
+  AUDIO_PATH = os.path.join(current_dir, "20260526_\u201cAll_units (1).wav")
+  ```
+- **8단계 연결성 검증 체크포인트 (스페이스 2칸 컨벤션 준수)**:
+  ```python
+  import os, sys, shutil
+
+  # CHECK-1: ffmpeg 시스템 PATH 탐지 여부
+  ffmpeg_found = shutil.which("ffmpeg")
+  print('[CHECK-1] ffmpeg PATH 탐지:', ffmpeg_found or 'PATH 미등록 -> 핫로딩 필요')
+
+  # CHECK-2: winget 설치 폴더 물리 존재 여부
+  winget_dir = r'C:\Users\<username>\AppData\Local\Microsoft\WinGet\Packages\BtbN.FFmpeg.GPL.Shared_Microsoft.Winget.Source_8wekyb3d8bbwe'
+  print('[CHECK-2] winget ffmpeg 설치 폴더 존재:', os.path.exists(winget_dir))
+
+  # CHECK-3: ffmpeg bin 실행 폴더 발견 여부
+  # (winget_dir 하위 ffmpeg- 시작 서브폴더의 bin 폴더 경로 실제 존재 확인)
+
+  # CHECK-4: openai-whisper 패키지 정상 임포트
+  import whisper
+  print('[CHECK-4] openai-whisper 버전:', whisper.__version__)
+
+  # CHECK-5: 타겟 WAV 파일 존재
+  target_wav = os.path.join(current_dir, '20260526_\u201cAll_units (1).wav')
+  print('[CHECK-5] 타겟 WAV 존재:', os.path.exists(target_wav))
+
+  # CHECK-6: 폴백 WAV 파일 존재
+  fallback_wav = os.path.join(current_dir, 'radio_normal.wav')
+  print('[CHECK-6] 폴백 WAV 존재:', os.path.exists(fallback_wav))
+
+  # CHECK-7: 최종 사용될 오디오 경로 결정
+  final_path = target_wav if os.path.exists(target_wav) else fallback_wav
+  print('[CHECK-7] 최종 경로:', final_path)
+
+  # CHECK-8: 파일 크기 확인
+  size_mb = os.path.getsize(final_path) / 1024 / 1024
+  print(f'[CHECK-8] 파일 크기: {size_mb:.2f} MB')
+  ```
+- **검증 결과 의미 해독**:
+  - CHECK-1이 `PATH 미등록`이어도 CHECK-2, CHECK-3이 True이면 핫로딩 코드가 자동 보완하므로 정상 동작합니다.
+  - CHECK-5가 False이면 CHECK-6(폴백)으로 자동 전환되므로 에러 없이 구동됩니다.
+  - CHECK-4가 임포트 실패인 경우 `pip install openai-whisper` 재설치가 필요합니다.
+- **실무 주의사항 및 팁**:
+  - 연결성 검증 스크립트는 메인 실행 전 독립적으로 실행하여 인프라 이상을 사전 포착하는 Pre-flight Check 루틴으로 활용합니다.
+  - 검증 항목 전체(CHECK-1 ~ CHECK-8)가 통과되면 `model.transcribe()` 실행 시 에러 없이 완전 전사(Transcribe)가 보장됩니다.
 
