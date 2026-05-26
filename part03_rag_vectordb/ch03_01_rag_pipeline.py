@@ -97,6 +97,7 @@ print("✅ STEP 5: Retriever 구성 완료 (상위 3개 반환)\n")
 prompt = PromptTemplate.from_template(
     """당신은 CCTV 보안 분석 전문가입니다.
 아래 과거 탐지 로그를 참고하여 현재 상황에 대한 대응 방안을 제시하세요.
+negative prompt : 주어지지 않은 정보에 대한 추론 금지.
 
 [참고 과거 사례]
 {context}
