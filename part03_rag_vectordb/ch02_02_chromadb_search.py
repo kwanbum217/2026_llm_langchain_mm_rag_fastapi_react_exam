@@ -1,6 +1,11 @@
 # ChromaDB에 탐지 로그를 저장하고 유사 상황을 검색해 봅시다
 
 
+# [SYSTEM_INIT] Windows 터미널 인코딩 충돌 방지 강제 설정
+import sys
+if hasattr(sys.stdout, "reconfigure"):
+    sys.stdout.reconfigure(encoding="utf-8")
+
 from langchain_core import documents
 from annotated_types import doc
 from chromadb import Collection
@@ -116,20 +121,20 @@ results = collection.query(
 # }
 # [0] 인덱스: 쿼리가 1개이므로 첫 번째(0번) 결과만 사용
 
-print(f"🔍 현재 상황: {query}\n")
-print("📋 유사 과거 사례 TOP 3:")
+print(f"[SEARCH] 현재 상황: {query}\n")
+print("[ACTION] 유사 과거 사례 TOP 3:")
 for i, (doc, meta, dist) in enumerate(zip(
     results["documents"][0],
     results["metadatas"][0],
     results["distances"][0],
 ), 1):
     print(f"\n  [{i}위] 거리: {dist:.3f} (낮을수록 유사)")
-    print(f"  📅 {meta['timestamp']} | 📍 {meta['location']}")
-    print(f"  📄 {doc}")
-    print(f"  ⚡ 당시 조치: {meta['action_taken']}")
+    print(f"  [DATE] {meta['timestamp']} | [LOCATION] {meta['location']}")
+    print(f"  [FILE] {doc}")
+    print(f"  [ACTION_TAKEN] 당시 조치: {meta['action_taken']}")
 
 # 메타데이터 필터링 검색
-print("\n\n📌 추가: '위험' 등급 로그만 필터링 검색")
+print("\n\n[TIP] 추가: '위험' 등급 로그만 필터링 검색")
 
 # where 조건 이용
 filtered= collection.query(

@@ -4,6 +4,11 @@
 # - Part 01 실습 최종 예제와 동일한 구조입니다
 # ─────────────────────────────────────────────────────────────────
 
+# [SYSTEM_INIT] Windows 터미널 인코딩 충돌 방지 강제 설정
+import sys
+if hasattr(sys.stdout, "reconfigure"):
+    sys.stdout.reconfigure(encoding="utf-8")
+
 import os
 import json          # JSON 파싱 라이브러리 (파이썬 내장)
 from dotenv import load_dotenv
@@ -79,7 +84,7 @@ if result:
             "notify": True,
         },
         "위험": {
-            "icon":   "🔴",
+            "icon":   "[ALERT]",
             "action": "경찰 즉시 신고 + 비상 알람",
             "notify": True,
         },
@@ -89,13 +94,13 @@ if result:
     handler = risk_handlers.get(level, risk_handlers["정상"])
 
     print(f"  {handler['icon']} 위험도 : {level}")
-    print(f"  📋 자동 조치: {handler['action']}")
+    print(f"  [ACTION] 자동 조치: {handler['action']}")
 
     if handler["notify"]:
         # 실제로는 여기서 경비팀 알림 API를 호출하거나
         # DB에 저장하거나 이메일을 보내는 코드를 넣습니다
         # (Part 05 FastAPI에서 구현합니다)
-        print(f"  📤 알림 전송: {result.get('action', '')}")
+        print(f"  [SEND] 알림 전송: {result.get('action', '')}")
 
-    print(f"\n  💾 분석 결과를 DB에 저장...")
-    print(f"  ✅ 처리 완료 — {result.get('timestamp', '')}")
+    print(f"\n  [SAVE] 분석 결과를 DB에 저장...")
+    print(f"  [OK] 처리 완료 — {result.get('timestamp', '')}")

@@ -6,6 +6,11 @@
 # ─────────────────────────────────────────────────────────────
 
 
+# [SYSTEM_INIT] Windows 터미널 인코딩 충돌 방지 강제 설정
+import sys
+if hasattr(sys.stdout, "reconfigure"):
+    sys.stdout.reconfigure(encoding="utf-8")
+
 def mock_llm(messages: list) -> str:
     """
     실제 LLM 대신 동작을 시뮬레이션하는 함수.
@@ -54,7 +59,7 @@ print(f"LLM   : {response_1}")
 response_2 = mock_llm([{"role": "user", "content": "왜 위험으로 분류했어?"}])
 print(f"\\n사용자: 왜 위험으로 분류했어?")
 print(f"LLM   : {response_2}")
-print("→ ❌ 이전 분석을 기억하지 못합니다!\\n")
+print("→ [ERROR] 이전 분석을 기억하지 못합니다!\\n")
 
 
 # ────────────────────────────────────────────────────────
@@ -85,7 +90,7 @@ chat_history.append({"role": "assistant", "content": ai_msg_2})  # 이력 저장
 
 print(f"\\n사용자: {user_msg_2}")
 print(f"LLM   : {ai_msg_2}")
-print("→ ✅ 이전 분석 내용을 기억합니다!")
+print("→ [OK] 이전 분석 내용을 기억합니다!")
 
 # 현재 이력 상태 확인
 print(f"\\n현재 이력 길이: {len(chat_history)}개 메시지")

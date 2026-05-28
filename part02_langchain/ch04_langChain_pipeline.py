@@ -5,6 +5,11 @@
 # API 키 불필요 (Mock LLM 사용)
 # ─────────────────────────────────────────────────────────────
 
+# [SYSTEM_INIT] Windows 터미널 인코딩 충돌 방지 강제 설정
+import sys
+if hasattr(sys.stdout, "reconfigure"):
+    sys.stdout.reconfigure(encoding="utf-8")
+
 import json, re, random
 from langchain_core.prompts import ChatPromptTemplate
 from langchain_core.runnables import RunnableLambda

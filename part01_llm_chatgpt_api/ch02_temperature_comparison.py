@@ -4,6 +4,11 @@
 # - 숫자가 클수록 "다양하고 창의적", 작을수록 "일관되고 안정적"
 # ─────────────────────────────────────────────────────────────────
 
+# [SYSTEM_INIT] Windows 터미널 인코딩 충돌 방지 강제 설정
+import sys
+if hasattr(sys.stdout, "reconfigure"):
+    sys.stdout.reconfigure(encoding="utf-8")
+
 import os
 from dotenv import load_dotenv
 from openai import OpenAI
@@ -32,7 +37,7 @@ print(f"[질문] {USER}\n")
 
 for temp, desc in temperature_tests:
     print(f"\n{'─' * 55}")
-    print(f"🌡️  temperature = {temp}  ({desc})")
+    print(f"[TEMP]  temperature = {temp}  ({desc})")
     print("    같은 질문을 3번 호출:")
 
     # 동일한 temperature로 3번 호출해서 일관성을 확인합니다
@@ -52,6 +57,6 @@ for temp, desc in temperature_tests:
         print(f"    호출 {call_num}: {one_line[:70]}")
 
 print(f"\n{'─' * 55}")
-print("\n📌 결론:")
+print("\n[TIP] 결론:")
 print("   CCTV 위험도 분석에는 temperature=0.0~0.3 사용을 권장합니다.")
 print("   위험 판단이 매번 달라지면 신뢰할 수 없는 시스템이 됩니다.")

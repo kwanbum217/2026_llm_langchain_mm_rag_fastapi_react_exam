@@ -11,6 +11,11 @@
 #   5. 최종 답변 생성 (Final Answer)
 # ─────────────────────────────────────────────────────────────
 
+# [SYSTEM_INIT] Windows 터미널 인코딩 충돌 방지 강제 설정
+import sys
+if hasattr(sys.stdout, "reconfigure"):
+    sys.stdout.reconfigure(encoding="utf-8")
+
 import json, random, re
 from langchain_core.tools import tool
 from langchain_core.prompts import ChatPromptTemplate

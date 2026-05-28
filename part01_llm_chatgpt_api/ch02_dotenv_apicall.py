@@ -3,6 +3,11 @@
 # - python-dotenv 라이브러리로 .env 파일을 자동으로 읽어옵니다
 # ─────────────────────────────────────────────────────────────────
 
+# [SYSTEM_INIT] Windows 터미널 인코딩 충돌 방지 강제 설정
+import sys
+if hasattr(sys.stdout, "reconfigure"):
+    sys.stdout.reconfigure(encoding="utf-8")
+
 import os
 from dotenv import load_dotenv   # python-dotenv 패키지에서 가져오기
 from openai import OpenAI
@@ -71,7 +76,7 @@ print(f"종료 사유 : {finish_reason}")
 
 # 토큰 사용량 확인
 usage = response.usage
-print(f"\n📊 토큰 사용량:")
+print(f"\n[STATUS] 토큰 사용량:")
 print(f"   입력 (prompt)    : {usage.prompt_tokens:>5} 토큰")
 print(f"   출력 (completion): {usage.completion_tokens:>5} 토큰")
 print(f"   합계 (total)     : {usage.total_tokens:>5} 토큰")
@@ -81,4 +86,4 @@ print(f"   합계 (total)     : {usage.total_tokens:>5} 토큰")
 input_cost  = (usage.prompt_tokens    / 1_000_000) * 2.50
 output_cost = (usage.completion_tokens / 1_000_000) * 10.00
 total_cost  = input_cost + output_cost
-print(f"\n💰 이번 호출 비용: ${total_cost:.6f}  (약 {total_cost * 1400:.4f}원)")
+print(f"\n[COST] 이번 호출 비용: ${total_cost:.6f}  (약 {total_cost * 1400:.4f}원)")

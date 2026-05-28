@@ -4,6 +4,11 @@
 # - 너무 작으면 답변이 잘리고, 너무 크면 비용이 늘어납니다
 # ─────────────────────────────────────────────────────────────────
 
+# [SYSTEM_INIT] Windows 터미널 인코딩 충돌 방지 강제 설정
+import sys
+if hasattr(sys.stdout, "reconfigure"):
+    sys.stdout.reconfigure(encoding="utf-8")
+
 import os
 from dotenv import load_dotenv
 from openai import OpenAI
@@ -23,7 +28,7 @@ print(f"[질문] {USER}\n")
 
 for max_tok in token_tests:
     print(f"\n{'─' * 55}")
-    print(f"📏 max_tokens = {max_tok}")
+    print(f"[SIZE] max_tokens = {max_tok}")
 
     response = client.chat.completions.create(
         model       = model,
@@ -45,10 +50,10 @@ for max_tok in token_tests:
 
     # 잘렸다면 경고 표시
     if finish_reason == "length":
-        print("\n   ⚠️  답변이 잘렸습니다! max_tokens를 늘려야 합니다.")
+        print("\n   [WARNING]  답변이 잘렸습니다! max_tokens를 늘려야 합니다.")
 
 print(f"\n{'─' * 55}")
-print("\n📌 이 강의 권장 설정:")
+print("\n[TIP] 이 강의 권장 설정:")
 print("   단순 위험도 판단  → max_tokens = 100~200")
 print("   상세 분석 리포트 → max_tokens = 300~500")
 print("   JSON 구조화 출력 → max_tokens = 300~400")

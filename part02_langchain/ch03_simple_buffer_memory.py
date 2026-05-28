@@ -1,3 +1,8 @@
+# [SYSTEM_INIT] Windows 터미널 인코딩 충돌 방지 강제 설정
+import sys
+if hasattr(sys.stdout, "reconfigure"):
+    sys.stdout.reconfigure(encoding="utf-8")
+
 class SimpleBufferMemory:
     """
     가장 단순한 형태의 대화 메모리 구현체.

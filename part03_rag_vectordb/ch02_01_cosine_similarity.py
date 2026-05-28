@@ -1,6 +1,11 @@
 # 탐지 로그 텍스트를 OpenAI Embedding으로 벡터화하고
 # 코사인 유사도를 직접 계산해서 비슷한 상황을 찾습니다.
 
+# [SYSTEM_INIT] Windows 터미널 인코딩 충돌 방지 강제 설정
+import sys
+if hasattr(sys.stdout, "reconfigure"):
+    sys.stdout.reconfigure(encoding="utf-8")
+
 import numpy as np
 from dotenv import load_dotenv
 from openai import OpenAI

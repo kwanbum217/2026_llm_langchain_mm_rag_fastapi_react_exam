@@ -19,3 +19,5 @@ numpy==2.4.6
 
 # ── Part 04: 멀티모달 (Multimodal) ──────────────────────────
 openai-whisper==20250625
+pyannote.audio==4.0.4
+soundfile==0.13.1

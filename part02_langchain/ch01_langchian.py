@@ -1,4 +1,9 @@
 #OPEN AI 채팅 모델을 LanChain 방식으로 사용할 수 있도록 하는 클래스
+# [SYSTEM_INIT] Windows 터미널 인코딩 충돌 방지 강제 설정
+import sys
+if hasattr(sys.stdout, "reconfigure"):
+    sys.stdout.reconfigure(encoding="utf-8")
+
 from dotenv import load_dotenv
 load_dotenv()
 

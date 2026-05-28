@@ -1,5 +1,10 @@
 # 지금까지 만든 세 부품을 | 연산자로 연결하여 최종 랭체인 파이프 라인을 구성합니다
 
+# [SYSTEM_INIT] Windows 터미널 인코딩 충돌 방지 강제 설정
+import sys
+if hasattr(sys.stdout, "reconfigure"):
+    sys.stdout.reconfigure(encoding="utf-8")
+
 import os
 from dotenv import load_dotenv
 from langchain_openai import ChatOpenAI

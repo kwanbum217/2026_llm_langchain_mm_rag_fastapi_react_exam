@@ -4,6 +4,11 @@
 # - "system이 얼마나 중요한지"를 직접 체감하는 실습입니다
 # ─────────────────────────────────────────────────────────────────
 
+# [SYSTEM_INIT] Windows 터미널 인코딩 충돌 방지 강제 설정
+import sys
+if hasattr(sys.stdout, "reconfigure"):
+    sys.stdout.reconfigure(encoding="utf-8")
+
 import os
 import sys
 from dotenv import load_dotenv
@@ -49,7 +54,7 @@ print(f"\n[공통 질문] {USER_MESSAGE}\n")
 
 for exp in experiments:
     print(f"\n{'─' * 55}")
-    print(f"🔧 {exp['name']}")
+    print(f"[CONFIG] {exp['name']}")
 
     # messages 구성 — system이 None이면 user만 포함
     if exp["system"] is not None:
@@ -74,11 +79,11 @@ for exp in experiments:
     answer = response.choices[0].message.content
     tokens = response.usage.total_tokens
 
-    print(f"🤖 응답 ({tokens} 토큰):")
+    print(f"[ASSISTANT] 응답 ({tokens} 토큰):")
     print(f"   {answer}")
 
 print(f"\n{'─' * 55}")
-print("\n💡 정리:")
+print("\n[INFO] 정리:")
 print("   ① 설정 없음  → 영어로 답변, 형식 없음")
 print("   ② 일반 AI    → 영어 또는 불규칙 한국어, 형식 없음")
 print("   ③ 전문가 설정 → 한국어, 구조화된 분석, 실무 활용 가능")

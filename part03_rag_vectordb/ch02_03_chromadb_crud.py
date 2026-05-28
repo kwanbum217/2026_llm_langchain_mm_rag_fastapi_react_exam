@@ -1,5 +1,10 @@
 # 영구히 저장(파일로 저장한) chroma db 운용법
 
+# [SYSTEM_INIT] Windows 터미널 인코딩 충돌 방지 강제 설정
+import sys
+if hasattr(sys.stdout, "reconfigure"):
+    sys.stdout.reconfigure(encoding="utf-8")
+
 import os
 import sys
 import chromadb
@@ -86,7 +91,7 @@ print()
 # STEP 2: UPDATE — 문서 내용 + 메타데이터 + 벡터 함께 변경
 # 사건이 해결됐을 때 로그 전체를 업데이트하는 시나리오
 #
-# ⚠️ 핵심 주의사항:
+# [WARNING] 핵심 주의사항:
 # 문서 내용(documents)이 바뀌면 반드시 새 벡터(embeddings)도 함께 넘겨야 합니다.
 # 벡터를 안 넘기면 내부 인덱스에는 예전 텍스트의 벡터가 그대로 남아서
 # 새로 추가된 내용("경찰 출동 후 검거" 등)으로 유사도 검색이 안 됩니다.
@@ -247,4 +252,3 @@ collection = chroma_client.get_or_create_collection(
 )
 print(f"방법 B (컬렉션 재생성) — 개수: {collection.count()}")
 print()
-

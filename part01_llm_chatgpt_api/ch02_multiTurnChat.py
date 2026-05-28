@@ -4,6 +4,11 @@
 # - 이 패턴을 Part 02에서 LangChain Memory가 자동화해줍니다
 # ─────────────────────────────────────────────────────────────────
 
+# [SYSTEM_INIT] Windows 터미널 인코딩 충돌 방지 강제 설정
+import sys
+if hasattr(sys.stdout, "reconfigure"):
+    sys.stdout.reconfigure(encoding="utf-8")
+
 import os
 from dotenv import load_dotenv
 from openai import OpenAI
@@ -62,12 +67,12 @@ print("=== 멀티턴 대화 (3턴) ===\n")
 total_tokens = 0
 
 for turn_num, user_msg in enumerate(scenario, start=1):
-    print(f"[{turn_num}턴] 🧑 운영자: {user_msg}")
+    print(f"[{turn_num}턴] [USER] 운영자: {user_msg}")
 
     reply, history = chat_with_history(client, history, user_msg)
 
-    print(f"      🤖 시스템: {reply}")
-    print(f"      📊 현재 히스토리 길이: {len(history)}개 메시지\n")
+    print(f"      [ASSISTANT] 시스템: {reply}")
+    print(f"      [STATUS] 현재 히스토리 길이: {len(history)}개 메시지\n")
 
 print("─" * 55)
 print(f"최종 히스토리 구조:")
@@ -77,6 +82,6 @@ for i, msg in enumerate(history):
     print(f"  [{i}] {role:9s}: {preview}")
 
 print()
-print("💡 3턴이 지나자 히스토리가 7개 메시지(system + 3×user/assistant)로 늘었습니다.")
+print("[INFO] 3턴이 지나자 히스토리가 7개 메시지(system + 3×user/assistant)로 늘었습니다.")
 print("   대화가 길어질수록 토큰이 늘어납니다.")
 print("   → Part 02에서 LangChain이 이걸 자동 관리합니다.") 

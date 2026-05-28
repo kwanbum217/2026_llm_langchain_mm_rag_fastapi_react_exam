@@ -9,6 +9,11 @@
 #   ...
 # ]
 
+# [SYSTEM_INIT] Windows 터미널 인코딩 충돌 방지 강제 설정
+import sys
+if hasattr(sys.stdout, "reconfigure"):
+    sys.stdout.reconfigure(encoding="utf-8")
+
 import csv
 from dotenv import load_dotenv
 from typing import List
@@ -40,7 +45,7 @@ sample_rows = [
 
 # with open(CSV_PATH, "w", newline="", encoding="utf-8") as f:
 #     csv.writer(f).writerows(sample_rows)
-# print(f"✅ STEP 1: CSV 생성 완료 ({len(sample_rows)-1}건)\n")
+# print(f"[OK] STEP 1: CSV 생성 완료 ({len(sample_rows)-1}건)\n")
 
 # ─────────────────────────────────────────────────────────────
 # STEP 2: DocumentLoader — CSV 파일을 Document 객체로 읽기
@@ -54,7 +59,7 @@ loader = CSVLoader(
 
 raw_docs = loader.load()
 
-print(f"✅ STEP 2: {len(raw_docs)}개 Document 로드")
+print(f"[OK] STEP 2: {len(raw_docs)}개 Document 로드")
 print(f"   첫 번째 Document 내용:")
 print(f"   {raw_docs[0].page_content[:100]}")
 print(f"   메타데이터: {raw_docs[0].metadata}\n")
@@ -72,7 +77,7 @@ splitter = CharacterTextSplitter(
 
 docs =splitter.split_documents(raw_docs)
 
-print(f"✅ STEP 3: {len(raw_docs)}개 → {len(docs)}개 청크로 분할\n")
+print(f"[OK] STEP 3: {len(raw_docs)}개 → {len(docs)}개 청크로 분할\n")
 
 # ─────────────────────────────────────────────────────────────
 # STEP 4: OpenAI Embedding + ChromaDB에 저장
@@ -80,7 +85,7 @@ print(f"✅ STEP 3: {len(raw_docs)}개 → {len(docs)}개 청크로 분할\n")
 # ─────────────────────────────────────────────────────────────
 embeddings = OpenAIEmbeddings(model="text-embedding-3-small")
 vectorstore = Chroma.from_documents(documents=docs, embedding=embeddings)
-print(f"✅ STEP 4: ChromaDB에 {len(docs)}개 청크 저장 완료\n")
+print(f"[OK] STEP 4: ChromaDB에 {len(docs)}개 청크 저장 완료\n")
 
 # ─────────────────────────────────────────────────────────────
 # STEP 5: Retriever — 검색기 (LLM이 검색할 대상)생성
@@ -88,7 +93,7 @@ print(f"✅ STEP 4: ChromaDB에 {len(docs)}개 청크 저장 완료\n")
 # Django의 Model.objects.filter()[:3]과 비슷한 개념
 # ─────────────────────────────────────────────────────────────
 retriever = vectorstore.as_retriever(search_kwargs={"k": 3})
-print("✅ STEP 5: Retriever 구성 완료 (상위 3개 반환)\n")
+print("[OK] STEP 5: Retriever 구성 완료 (상위 3개 반환)\n")
 
 # ─────────────────────────────────────────────────────────────
 # STEP 6: LCEL RAG 체인 구성
@@ -128,7 +133,7 @@ rag_chain = (
     | StrOutputParser()
 )
 
-print("✅ STEP 6: LCEL RAG 체인 구성 완료\n")
+print("[OK] STEP 6: LCEL RAG 체인 구성 완료\n")
 
 
 # ─────────────────────────────────────────────────────────────
@@ -137,7 +142,7 @@ print("✅ STEP 6: LCEL RAG 체인 구성 완료\n")
 query = "새벽 2시 창고 출입구에서 person:2 / car:1 탐지. 침입 의심. 어떻게 대응해야 하나요?"
 
 print("=" * 60)
-print(f"🔍 현재 상황: {query}")
+print(f"[SEARCH] 현재 상황: {query}")
 print("=" * 60)
 
 retrieved = retriever.invoke(query)
@@ -148,5 +153,4 @@ for i, doc in enumerate(retrieved, 1):
 
 answer = rag_chain.invoke(query)
 
-print(f"\n🤖 GPT-4o-mini 대응 방안:\n{answer}")
-
+print(f"\n[ASSISTANT] GPT-4o-mini 대응 방안:\n{answer}")

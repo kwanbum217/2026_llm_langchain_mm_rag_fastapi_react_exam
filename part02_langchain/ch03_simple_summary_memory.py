@@ -3,6 +3,11 @@
 # 실제 LangChain에서는 요약을 LLM이 자동으로 수행(InMemoryChatMessageHistory)합니다
 # ─────────────────────────────────────────────────────────────
 
+# [SYSTEM_INIT] Windows 터미널 인코딩 충돌 방지 강제 설정
+import sys
+if hasattr(sys.stdout, "reconfigure"):
+    sys.stdout.reconfigure(encoding="utf-8")
+
 class SimpleSummaryMemory:
     """
     오래된 대화를 요약으로 압축하는 메모리 클래스.

@@ -357,6 +357,8 @@
 | **이모지 전면 제거 정책** | 시스템 인코딩 충돌을 예방하고 프로젝트 스타일의 엄격한 가독성 확보를 위해, **모든 소스 코드 및 출력용 텍스트, 문서 마크다운에서 이모지를 전면 차단하고 대괄호 기호로 통일**합니다. |
 | **파일 스트림 UTF-8 명시** | Windows 로컬 환경에서 텍스트 입출력 시 시스템 인코딩 오류가 발생하지 않도록 `open(..., encoding="utf-8")`을 코드 작성 시 필수로 선언합니다. |
 | **유니코드 Smart Quote 경고** | 파일명에 포함된 유니코드 특수 따옴표(`"`, U+201C)를 문자열에 직접 기술하면 VS Code 등 에디터가 문법 기호 혼동 경고(빨간 밑줄)를 표시합니다. 해결책은 해당 문자를 `\u201c` 이스케이프 시퀀스로 치환하여 런타임에 동적 해독되도록 처리하는 것입니다. |
+| **os.path.join 경로 누수** | `os.path.join(path, "/sub")`처럼 서브 인자에 슬래시로 시작하는 경로를 기입하면 드라이브 루트로 재매핑되어 부모 경로가 유실됩니다. 슬래시가 없는 상대 디렉토리명(`"sub"`, `"file"`) 형태로만 인자를 구분하여 전달해야 합니다. |
+| **ffmpeg 외부 호출 특수문자 에러** | Windows 환경에서 외부 프로세스인 `ffmpeg`를 호출할 때 파일명에 특수 따옴표(`“`, `”`)가 있으면 `Illegal byte sequence`를 일으키며 크래시가 납니다. 물리 파일명 자체를 일반 알파벳/숫자/공백 위주의 안전한 파일명으로 리네임하고 코드를 수정해야 합니다. |
 
 ---
 
@@ -487,4 +489,137 @@
 - **실무 주의사항 및 팁**:
   - 연결성 검증 스크립트는 메인 실행 전 독립적으로 실행하여 인프라 이상을 사전 포착하는 Pre-flight Check 루틴으로 활용합니다.
   - 검증 항목 전체(CHECK-1 ~ CHECK-8)가 통과되면 `model.transcribe()` 실행 시 에러 없이 완전 전사(Transcribe)가 보장됩니다.
+
+### Skill 36: 교재 버전 코드 실전 호환 교정 패턴 및 Whisper+LangChain 통합 파이프라인
+- **파일**: `part04_multimodal/ch03_02_whisper_local.py`, `part04_multimodal/ch03_03_batch_transcribe.py`
+- **핵심**: 실무 배포 시 빈번히 깨지는 교재 소스 코드를 교정하여 윈도우 환경 호환성, 경로 불일치, 그리고 다국어 음성 인식 시 발생하는 언어 하드코딩 환각(Hallucination) 에러를 극복하고, Whisper의 전사 결과와 LangChain GPT-4o를 긴밀히 연결해 원스톱 무전 보안 보고서 생성 파이프라인을 구축합니다.
+- **핵심 구현 코드 (스페이스 2칸 컨벤션 준수)**:
+  ```python
+  import os
+  import sys
+  import whisper
+  from langchain_openai import ChatOpenAI
+  from langchain_core.prompts import PromptTemplate
+  from langchain_core.output_parsers import StrOutputParser
+
+  # [1] UTF-8 터미널 입출력 강제
+  if hasattr(sys.stdout, "reconfigure"):
+    sys.stdout.reconfigure(encoding="utf-8")
+
+  # [2] 실행 경로 독립성 확보 (절대경로 전환)
+  script_dir = os.path.dirname(os.path.abspath(__file__))
+  audio_path = os.path.join(script_dir, "waves", "20260526_\u201cAll_units (1).wav")
+
+  # [3] Whisper 모델 로딩 및 전사 실행
+  model = whisper.load_model("base")
+  # language=None 선언 시 첫 30초 음성을 자동 분석하여 영어/한국어를 자동 감지
+  result = model.transcribe(
+    audio_path,
+    language=None,  # 하드코딩 탈피하여 타 언어 음성에 대한 한국어 변환 환각 방지
+    fp16=False      # CPU 실행 보장 플래그
+  )
+
+  # [4] LangChain GPT-4o 보안 관제 보고서 요약 연동
+  prompt = PromptTemplate.from_template(
+    "당신은 관제 요원입니다. 다음 무전 내용을 요약해 보안 보고서 형식으로 작성하십시오.\n\n[원문]\n{transcription}"
+  )
+  llm = ChatOpenAI(model="gpt-4o", temperature=0)
+  chain = prompt | llm | StrOutputParser()
+  summary = chain.invoke({"transcription": result["text"]})
+  ```
+- **자료형 및 매개변수 (Data Types & Params)**:
+  - `language`: `None` 지정 시 Whisper가 다국어 배치 환경에서 영어와 한국어 등의 오디오 데이터를 오류 없이 각 파일의 고유 언어로 자동 분기하여 텍스트로 치환합니다.
+  - `avg_logprob`: 세그먼트별 인식 신뢰도 판단 실수치 데이터형입니다.
+    - `-0.5` 초과: `[OK]` (신뢰할 수 있는 전사 결과)
+    - `-0.5` ~ `-1.0`: `[주의]` (일부 부정확할 가능성 있음)
+    - `-1.0` 이하: `[불량]` (배경 소음, 노이즈 등으로 정상 음성 인지가 어려움)
+- **실무 주의사항 및 팁 (Warnings & Tips)**:
+  - **하드코딩 언어 환각(Hallucination) 주의**: 영어 오디오 파일에 `language="ko"`를 하드코딩해서 Whisper로 돌리면, 영어 음성이 완전히 엉뚱한 한글 문자열이나 반복적인 무한 루프 환각 텍스트로 전사되는 치명적 문제가 발생합니다. 따라서 다국어 파일 처리가 요구되거나 배치 자동화를 적용할 때는 `language=None`으로 설정해 모델이 스스로 언어를 판독하도록 해야 합니다.
+  - **이모지 차단 필터**: Windows CP949 인코딩 호환성을 확보하기 위해 터미널 및 파일 입출력 로직에서 사용되는 모든 이모지는 즉시 일반 대괄호 기호(`[OK]`, `[주의]`, `[경고]`) 형식으로 필터링 처리해야 에러가 발생하지 않습니다.
+
+### Skill 37: 로컬 Whisper 배치 STT 분석 데이터 기반 ChromaDB 연동 RAG 시스템 구축
+- **파일**: `part04_multimodal/ch03_02_01_whisper_rag.py`
+- **핵심**: 다중 오디오 무전 파일의 Whisper 로컬 배치 전사(STT), 전사 결과 세그먼트의 시간별 출처 정보를 바인딩한 LangChain Document 객체화, text-embedding-3-small 임베딩 및 ChromaDB 적재, 출처(파일명, 타임스탬프) 기반 GPT-4o RAG 시스템 구축
+- **핵심 구현 코드 (스페이스 2칸 컨벤션 준수)**:
+  ```python
+  # Document 객체 생성 및 메타데이터 바인딩
+  doc = Document(
+    page_content=text,
+    metadata={
+      "source": filename,
+      "start_time": f"{start_sec:.1f}s",
+      "end_time": f"{end_sec:.1f}s",
+      "timestamp": f"[{start_sec:.1f}s -> {end_sec:.1f}s]",
+      "confidence": confidence
+    }
+  )
+
+  # Chroma DB 빌드 및 LCEL RAG 체인 연동
+  embeddings = OpenAIEmbeddings(model="text-embedding-3-small")
+  vector_db = Chroma.from_documents(documents=docs, embedding=embeddings)
+  rag_chain = (
+    {"context": retriever | format_docs, "question": RunnablePassthrough()}
+    | prompt_template
+    | llm
+    | StrOutputParser()
+  )
+  ```
+- **자료형 및 매개변수 (Data Types & Params)**:
+  - `docs`: `list[Document]` 형태의 구조화된 LangChain 문서 목록.
+  - `format_docs(docs_list)`: 검색된 문서를 출처 메타데이터(파일명 및 타임스탬프)와 결합하여 프롬프트 컨텍스트용 문자열로 가공하는 헬퍼 함수.
+- **실무 주의사항 및 팁 (Warnings & Tips)**:
+  - **메모리(OOM) 방어 설계**: 대용량 오디오 배치 연산 시 메모리 누수가 발생하지 않도록 파일 단위 변환 루프가 완료될 때마다 `del result` 및 `gc.collect()`를 명시적으로 실행하는 리소스 가비지 컬렉션 아키텍처가 필수적입니다.
+  - **엄격한 컨텍스트 제약**: RAG 답변의 무작위 정보 생성을 방지하기 위해 프롬프트 템플릿 상에 철저히 제공된 컨텍스트만을 근거로 삼도록 제약하고, 제시된 무전 정보에서 답변할 수 없을 경우 "제시된 무전 정보에서 답변할 수 있는 근거를 찾을 수 없습니다"라고 정직하게 답변하도록 가이드라인을 부여해야 합니다.
+
+### Skill 38: 다중 오디오 파일 고속 배치 전사(Batch Transcribe) 최적화 패턴
+- **파일**: `part04_multimodal/ch03_03_batch_transcribe.py`
+- **핵심**: 다중 음성 파일 변환 루프를 돌릴 때, 매 파일마다 모델을 로드하여 발생하는 극심한 시간 오버헤드를 줄이기 위해 Whisper 모델을 1회만 메모리에 적재하여 재사용하는 최적화 패턴
+- **핵심 구현 코드 (스페이스 2칸 컨벤션 준수)**:
+  ```python
+  def batch_transcribe(audio_dir: str, model_name: str = "base") -> list:
+    # 모델을 함수 시작 시 1회만 적재
+    model = whisper.load_model(model_name)
+    results = []
+
+    # 대상 폴더 내 지원 포맷 스캔 및 일괄 변환 루프 수행
+    audio_files = [
+      f for f in os.listdir(audio_dir)
+      if f.lower().endswith((".wav", ".mp3", ".mp4", ".m4a", ".flac"))
+    ]
+    for filename in sorted(audio_files):
+      filepath = os.path.join(audio_dir, filename)
+      result = model.transcribe(filepath, fp16=False)
+      results.append({
+        "file": filename,
+        "text": result["text"],
+        "language": result["language"],
+        "segments": result["segments"]
+      })
+    return results
+  ```
+- **실무 주의사항 및 팁 (Warnings & Tips)**:
+  - 대량 배치 처리를 진행할 때 `whisper.load_model()`을 루프 내부에 작성하는 실수를 저지르면 수백 초 이상의 모델 로드 지연이 누적되므로 반드시 루프 외부에서 한 번만 호출하여 1회성 초기화 구조로 운영해야 합니다.
+
+### Skill 39: Windows 터미널 출력 인코딩 강제 및 os.path.join 절대경로 병합 결함 회피
+- **파일**: `part04_multimodal/ch03_04_multi_dialization.py`
+- **핵심**: Windows CP949 터미널 표준 출력 시 유니코드 출력 예외를 방지하는 stdout 재구성 로직과 `os.path.join` 결합 인자에 슬래시(/)를 사용해 절대경로가 유실되는 런타임 오류 회피
+- **핵심 구현 코드 (스페이스 2칸 컨벤션 준수)**:
+  ```python
+  import sys
+  import os
+
+  # [1] 터미널 인코딩 충돌 방지 강제 설정
+  if hasattr(sys.stdout, "reconfigure"):
+    sys.stdout.reconfigure(encoding="utf-8")
+
+  # [2] 절대경로 병합 결함 회피 (두 번째 인자의 슬래시 '/' 배제)
+  # Bad: os.path.join(_SCRIPT_DIR, "/part04_multimodal/wav/file.wav") -> D:\part04_multimodal\wav\file.wav (경로 깨짐)
+  # Good: os.path.join(_SCRIPT_DIR, "waves", "file.wav") -> D:\...\part04_multimodal\waves\file.wav (정상 결합)
+  AUDIO_PATH = os.path.join(_SCRIPT_DIR, "waves", "20260526_All_units .wav")
+  ```
+- **실무 주의사항 및 팁 (Warnings & Tips)**:
+  - `os.path.join`에 슬래시로 시작하는 경로를 주입하면 드라이브 루트로 재매핑되는 파이썬 고유의 특성이 있어 정적 경로 버그를 유발하므로 반드시 서브 디렉토리명을 개별 인자로 구분해서 전달해야 합니다.
+  - Windows의 외부 실행 파일(`ffmpeg`)은 명령줄 인자에 Smart Quote(`“`, `”`)가 포함될 경우 `Illegal byte sequence`로 크래시를 내므로 물리 파일명을 무조건 영문/숫자/공백 등 일반 문자로 정비해서 호출해야 동작이 안전하게 보장됩니다.
+
+
 

@@ -1,10 +1,15 @@
 # ── 방법 1: LangChain 없이 반복 호출 ───────────────────────────────────────
-# > ❌ **이 방법의 문제점 3가지**
+# > [ERROR] **이 방법의 문제점 3가지**
 # > 
 # > 1. **프롬프트 수정의 어려움**: 프롬프트 형식을 바꾸려면 for 루프 안을 찾아서 수정해야 합니다. 프레임이 100개라면 100번 영향을 받습니다.
 # > 2. **파싱 코드 중복**: `json.loads(response.choices[0].message.content)` 같은 코드를 매번 써야 합니다.
 # > 3. **재사용 불가**: 이 코드는 "CCTV 분석"에만 쓸 수 있습니다. 다른 분석에 쓰려면 처음부터 다시 작성해야 합니다.
 # Part 01에서 만든 format_detections 함수 (재사용)
+# [SYSTEM_INIT] Windows 터미널 인코딩 충돌 방지 강제 설정
+import sys
+if hasattr(sys.stdout, "reconfigure"):
+    sys.stdout.reconfigure(encoding="utf-8")
+
 def format_detections(frame_data):
     lines = [f"[{frame_data['timestamp']}] 프레임 #{frame_data['frame_id']}"]
     if not frame_data['detections']:
@@ -37,7 +42,7 @@ frame_results = [
     # ... 실제로는 100개 이상
 ]
 
-# ❌ 문제: 프레임마다 수동으로 같은 작업을 반복해야 한다
+# [ERROR] 문제: 프레임마다 수동으로 같은 작업을 반복해야 한다
 results = []
 
 for frame in frame_results:

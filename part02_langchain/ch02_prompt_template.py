@@ -1,3 +1,8 @@
+# [SYSTEM_INIT] Windows 터미널 인코딩 충돌 방지 강제 설정
+import sys
+if hasattr(sys.stdout, "reconfigure"):
+    sys.stdout.reconfigure(encoding="utf-8")
+
 from langchain_core.prompts import ChatPromptTemplate
 
 # ChatPromptTemplate.from_messages() 로 System / Human 두 역할 함께 정의

@@ -6,6 +6,11 @@
 
 # messages는 딕셔너리의 리스트입니다
 # 각 딕셔너리는 반드시 "role"과 "content" 키를 가져야 합니다
+# [SYSTEM_INIT] Windows 터미널 인코딩 충돌 방지 강제 설정
+import sys
+if hasattr(sys.stdout, "reconfigure"):
+    sys.stdout.reconfigure(encoding="utf-8")
+
 messages = [
     # ── 역할 1: system ───────────────────────────────────────────
     # AI의 정체성(페르소나)을 설정합니다
@@ -47,17 +52,17 @@ print("=== messages 구조 ===\n")
 
 # 역할별 아이콘 딕셔너리 — .get(key, 기본값) 패턴
 role_icons = {
-    "system":    "⚙️  SYSTEM   ",  # 배경 설정
-    "user":      "🧑 USER     ",  # 사람의 질문
-    "assistant": "🤖 ASSISTANT",  # AI의 답변
+    "system":    "[SYSTEM]  SYSTEM   ",  # 배경 설정
+    "user":      "[USER] USER     ",  # 사람의 질문
+    "assistant": "[ASSISTANT] ASSISTANT",  # AI의 답변
 }
 
 for i, msg in enumerate(messages):
     # enumerate: (인덱스, 값) 쌍 반환. start=0이 기본값
-    icon = role_icons.get(msg["role"], "❓ UNKNOWN  ")
+    icon = role_icons.get(msg["role"], "[UNKNOWN] UNKNOWN  ")
     print(f"  [{i}] {icon} : {msg['content'][:40]}...")
     #                                               ↑ 긴 content는 40자만 표시
 
 print()
-print("  💡 API는 이 리스트를 통째로 받아서 다음 assistant 답변을 생성합니다.")
-print("  💡 API 자체는 '기억'이 없습니다 — 매번 전체 리스트를 전달해야 합니다.")
+print("  [INFO] API는 이 리스트를 통째로 받아서 다음 assistant 답변을 생성합니다.")
+print("  [INFO] API 자체는 '기억'이 없습니다 — 매번 전체 리스트를 전달해야 합니다.")
